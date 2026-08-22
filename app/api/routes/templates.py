@@ -73,12 +73,17 @@ async def list_templates(
         limit=page.limit,
         offset=page.offset,
     )
+    parsed = parse_rows(TemplateRead, items, collection="templates")
+    skipped = len(items) - len(parsed)
     return Page[TemplateRead](
-        items=parse_rows(TemplateRead, items, collection="templates"),
+        items=parsed,
         limit=page.limit,
         offset=page.offset,
-        total=total,
-        has_more=page.offset + len(items) < total,
+        # Skipped rows are subtracted so `total` counts what a caller can
+        # actually page through; leaving them in made has_more promise a page
+        # that comes back empty.
+        total=total - skipped,
+        has_more=page.offset + len(parsed) < total - skipped,
     )
 
 

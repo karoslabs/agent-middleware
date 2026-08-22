@@ -102,3 +102,18 @@ async def test_a_listing_of_only_foreign_documents_is_empty_not_broken(
 
     assert response.status_code == 200
     assert response.json()["items"] == []
+
+
+async def test_total_excludes_skipped_rows_so_has_more_does_not_lie(
+    client: TestClient, agent: dict[str, Any], database: FirestoreDB
+) -> None:
+    """A `total` counting rows the caller can never receive promises a page
+    that comes back empty."""
+
+    await _write_foreign_agent(database)
+
+    body = client.get("/agents").json()
+
+    assert len(body["items"]) == 1
+    assert body["total"] == 1
+    assert body["has_more"] is False
