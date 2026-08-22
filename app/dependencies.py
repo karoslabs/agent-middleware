@@ -17,7 +17,6 @@ from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
 from app.services.feedback import FeedbackService
-from app.services.forwarder import MessageForwarder
 from app.services.prompts import PromptService
 from app.services.runs import RunService
 from app.services.templates import TemplateService
@@ -29,10 +28,6 @@ def get_settings_dep(request: Request) -> Settings:
 
 def get_db(request: Request) -> FirestoreDB:
     return request.app.state.db
-
-
-def get_forwarder(request: Request) -> MessageForwarder:
-    return request.app.state.forwarder
 
 
 def get_agent_service(request: Request) -> AgentService:

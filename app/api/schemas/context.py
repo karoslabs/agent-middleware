@@ -65,6 +65,13 @@ class AgentContextTemplate(BaseModel):
     content: str | None
     schema_definition: dict[str, Any] | None
     variables: list[str]
+    assets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "GCS URIs of the binary assets bound to this template version. The "
+            "engine fetches these itself; only the references travel in the payload."
+        ),
+    )
 
 
 class AgentContext(BaseModel):

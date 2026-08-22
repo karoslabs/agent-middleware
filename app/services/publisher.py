@@ -7,7 +7,11 @@ import logging
 from concurrent.futures import Executor
 from functools import partial
 
-from google.cloud import pubsub_v1
+# `google.cloud` is a namespace package whose submodules mypy cannot see as
+# attributes, even though this is the import form the library documents. The
+# ignore is scoped to this one line rather than silenced repo-wide so a real
+# attribute error elsewhere still surfaces.
+from google.cloud import pubsub_v1  # type: ignore[attr-defined]
 
 from app.config import Settings
 from app.core.exceptions import MessagePublishError
@@ -27,17 +31,17 @@ class PublisherService:
         self._settings = settings
         self._client = client or pubsub_v1.PublisherClient()
         self._topic_path = self._client.topic_path(
-            settings.gcp_project_id, settings.pubsub_destination_topic_id
+            settings.gcp_project_id, settings.job_topic_id
         )
 
     @property
     def topic_path(self) -> str:
-        """Path of the default (forwarding) destination topic."""
+        """Path of the job topic — the only topic this service publishes to."""
 
         return self._topic_path
 
     def topic_path_for(self, topic_id: str | None) -> str:
-        """Resolve a topic id to a full path, defaulting to the destination topic."""
+        """Resolve a topic id to a full path, defaulting to the job topic."""
 
         if topic_id is None:
             return self._topic_path

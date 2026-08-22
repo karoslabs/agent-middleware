@@ -5,10 +5,33 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.schemas.common import SlugStr
 from app.core.enums import TemplateKind
+
+GCS_URI_PREFIX = "gs://"
+
+
+def _validate_asset_uris(assets: list[str]) -> list[str]:
+    """Assets are GCS object URIs and nothing else.
+
+    Deliberately strict. The engine resolves these against a bucket it has
+    credentials for; an ``https://`` link or a bare path would either fail late,
+    inside a render, or — worse — quietly point a client's deliverable at
+    somebody else's origin. Rejecting at the API boundary keeps a malformed
+    reference out of an immutable version row.
+    """
+
+    cleaned: list[str] = []
+    for asset in assets:
+        candidate = asset.strip()
+        if not candidate.startswith(GCS_URI_PREFIX):
+            raise ValueError(f"asset {asset!r} must be a {GCS_URI_PREFIX} URI")
+        if len(candidate) <= len(GCS_URI_PREFIX):
+            raise ValueError("asset URI is missing a bucket and object path")
+        cleaned.append(candidate)
+    return cleaned
 
 
 class TemplateCreate(BaseModel):
@@ -29,6 +52,12 @@ class TemplateCreate(BaseModel):
         default=None, description="Initial version structure/settings (optional)"
     )
     variables: list[str] = Field(default_factory=list)
+    assets: list[str] = Field(
+        default_factory=list,
+        description="GCS URIs of binary assets this version renders with",
+    )
+
+    _check_assets = field_validator("assets")(_validate_asset_uris)
 
 
 class TemplateUpdate(BaseModel):
@@ -49,12 +78,24 @@ class TemplateVersionCreate(BaseModel):
     content: str | None = None
     schema_definition: dict[str, Any] | None = None
     variables: list[str] = Field(default_factory=list)
+    assets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "GCS URIs (gs://bucket/path) of binary assets — images, fonts — this "
+            "version renders with. Versioned alongside the body so a rollback "
+            "restores the exact asset set the body was authored against."
+        ),
+    )
     notes: str | None = None
     created_by: str | None = Field(default=None, max_length=255)
     activate: bool = True
 
+    _check_assets = field_validator("assets")(_validate_asset_uris)
+
     @model_validator(mode="after")
     def require_a_body(self) -> TemplateVersionCreate:
+        # `assets` alone is not a body: a version that renders nothing has
+        # nothing for the assets to belong to.
         if self.content is None and self.schema_definition is None:
             raise ValueError("either 'content' or 'schema_definition' must be provided")
         return self
@@ -69,6 +110,9 @@ class TemplateVersionRead(BaseModel):
     content: str | None
     schema_definition: dict[str, Any] | None
     variables: list[str]
+    # Defaulted, not required: versions written before assets existed have no
+    # such field, and reading one back must not 500.
+    assets: list[str] = Field(default_factory=list)
     notes: str | None
     is_active: bool
     created_by: str | None

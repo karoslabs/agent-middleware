@@ -1,15 +1,20 @@
 """FastAPI application entrypoint: wiring, lifespan management, exception handling.
 
-The service plays two roles:
+The service is the **control plane** for the agent platform: the source of truth
+in Firestore for agents, versioned system prompts, few-shot examples, content
+templates (with their GCS asset bindings), runs and feedback.
 
-* **Control plane / data hub** -- the source of truth in Firestore for agents,
-  versioned system prompts, few-shot examples, content templates, runs and
-  feedback. The portal reads a resolved context from here when launching a task.
-* **Pub/Sub bridge** -- job payloads are published to the engine topic, and the
-  pull subscriber plus ``POST /pubsub/push`` forward inbound messages on.
+It has exactly one outbound path — ``POST /agents/{agent_id}/jobs`` resolves an
+agent's context, records a run, and publishes the payload to agent-engine's
+topic. The engine is a stateless worker: everything it needs is in the message,
+and it never reads this database.
 
-The engine itself is a stateless worker: it receives everything it needs inside
-the message and never reads this database.
+There is deliberately no generic message-forwarding bridge. An earlier version
+of this service relayed arbitrary Pub/Sub traffic between two topics (a pull
+subscriber plus ``POST /pubsub/push``); that path knew nothing about agents,
+recorded no run, and gave feedback nothing to attach to. Dispatch is the only
+way a job reaches the engine, which is what keeps the run, the payload and the
+message consistent by construction.
 """
 
 from __future__ import annotations
@@ -18,14 +23,13 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from app.api.routes import agents, context, health, prompts, pubsub, runs, templates
+from app.api.routes import agents, context, health, prompts, runs, templates
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     IncompleteAgentConfigurationError,
-    InvalidPushMessageError,
     InvalidStateError,
     MessagePublishError,
     ResourceConflictError,
@@ -33,15 +37,14 @@ from app.core.exceptions import (
 )
 from app.db.firestore import FirestoreDB
 from app.logging_config import configure_logging
+from app.security import require_service_identity
 from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
 from app.services.feedback import FeedbackService
-from app.services.forwarder import MessageForwarder
 from app.services.prompts import PromptService
 from app.services.publisher import PublisherService
 from app.services.runs import RunService
-from app.services.subscriber import PubSubSubscriber
 from app.services.templates import TemplateService
 
 logger = logging.getLogger(__name__)
@@ -70,7 +73,6 @@ def build_services(
     app.state.settings = settings
     app.state.db = database
     app.state.publisher = publisher
-    app.state.forwarder = MessageForwarder(publisher)
     app.state.agent_service = agent_service
     app.state.prompt_service = prompt_service
     app.state.template_service = template_service
@@ -90,24 +92,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database = FirestoreDB(settings)
     build_services(app, settings, database)
 
-    subscriber = PubSubSubscriber(settings, app.state.forwarder)
-    app.state.subscriber = subscriber
-    if settings.enable_pull_subscriber:
-        subscriber.start()
+    if not settings.auth_enabled:
+        logger.warning(
+            "Service-to-service authentication is DISABLED (AUTH_ENABLED=false); "
+            "every route is open to any caller that can reach this service"
+        )
+    elif settings.dev_token_permitted:
+        logger.warning(
+            "A static AUTH_DEV_TOKEN is configured and will be accepted alongside "
+            "OIDC tokens (environment=%s)",
+            settings.environment,
+        )
 
     logger.info(
-        "%s started (environment=%s, firestore=%s/%s, job_topic=%s)",
+        "%s started (environment=%s, firestore=%s/%s, job_topic=%s, auth=%s)",
         settings.app_name,
         settings.environment,
         settings.resolved_firestore_project_id,
         settings.firestore_database,
         settings.job_topic_id,
+        "enabled" if settings.auth_enabled else "disabled",
     )
     try:
         yield
     finally:
         logger.info("Shutting down %s", settings.app_name)
-        subscriber.stop()
         app.state.publisher.close()
         database.close()
 
@@ -116,23 +125,27 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Agent Middleware",
         description=(
-            "Control plane and data hub for the agent platform: agents, versioned "
-            "system prompts, few-shot examples, content templates, run history and "
-            "the feedback store -- plus the Pub/Sub bridge that hands jobs to the "
-            "engine."
+            "Control plane for the agent platform: agents, versioned system prompts, "
+            "few-shot examples, content templates and their GCS assets, run history, "
+            "the feedback store, and the job-dispatch route that hands work to "
+            "agent-engine."
         ),
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
 
+    # Health is deliberately unauthenticated: Cloud Run's startup and liveness
+    # probes do not carry an identity token, so gating it would fail deploys.
+    # It exposes only reachability booleans, never data.
     app.include_router(health.router)
-    app.include_router(agents.router)
-    app.include_router(prompts.router)
-    app.include_router(templates.router)
-    app.include_router(templates.agent_router)
-    app.include_router(context.router)
-    app.include_router(runs.router)
-    app.include_router(pubsub.router)
+
+    protected = [Depends(require_service_identity)]
+    app.include_router(agents.router, dependencies=protected)
+    app.include_router(prompts.router, dependencies=protected)
+    app.include_router(templates.router, dependencies=protected)
+    app.include_router(templates.agent_router, dependencies=protected)
+    app.include_router(context.router, dependencies=protected)
+    app.include_router(runs.router, dependencies=protected)
 
     register_exception_handlers(app)
     return app
@@ -169,13 +182,6 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_502_BAD_GATEWAY,
             content={"detail": "Failed to publish message to Pub/Sub."},
-        )
-
-    @app.exception_handler(InvalidPushMessageError)
-    async def handle_invalid_push(_: Request, exc: InvalidPushMessageError) -> JSONResponse:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": str(exc)},
         )
 
 

@@ -7,10 +7,6 @@ class MiddlewareError(Exception):
     """Base class for all errors raised by this service."""
 
 
-# Historical alias: the service started life as a pure Pub/Sub bridge.
-PubSubBridgeError = MiddlewareError
-
-
 class MessagePublishError(MiddlewareError):
     """Raised when publishing a message to Pub/Sub fails."""
 
@@ -18,10 +14,6 @@ class MessagePublishError(MiddlewareError):
         self.topic = topic
         self.cause = cause
         super().__init__(f"Failed to publish message to topic '{topic}': {cause}")
-
-
-class InvalidPushMessageError(MiddlewareError):
-    """Raised when an incoming Pub/Sub push envelope is malformed."""
 
 
 class ResourceNotFoundError(MiddlewareError):

@@ -8,7 +8,6 @@ emulator and no network.
 
 from __future__ import annotations
 
-import base64
 from collections.abc import Iterator
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
@@ -21,7 +20,6 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.db.firestore import FirestoreDB
 from app.main import build_services, create_app
-from app.services.forwarder import MessageForwarder
 from app.services.publisher import PublisherService
 from tests.fake_firestore import FakeFirestoreClient
 
@@ -46,12 +44,17 @@ class FakePublisherClient:
 
 @pytest.fixture
 def settings() -> Settings:
+    """Settings for the suite: real services, fake backends, auth off.
+
+    Auth is exercised directly in ``tests/test_security.py`` against its own
+    app instances rather than by threading a token through all ~70 functional
+    tests, which would test the fixture more than the behaviour.
+    """
+
     return Settings(
         gcp_project_id="test-project",
-        pubsub_source_subscription_id="test-subscription",
-        pubsub_destination_topic_id="test-topic",
         pubsub_job_topic_id="test-jobs-topic",
-        enable_pull_subscriber=False,
+        auth_enabled=False,
     )
 
 
@@ -70,11 +73,6 @@ def publisher_service(
     settings: Settings, fake_publisher_client: FakePublisherClient
 ) -> PublisherService:
     return PublisherService(settings, client=fake_publisher_client)  # type: ignore[arg-type]
-
-
-@pytest.fixture
-def forwarder(publisher_service: PublisherService) -> MessageForwarder:
-    return MessageForwarder(publisher_service)
 
 
 @pytest.fixture
@@ -105,14 +103,9 @@ def _fake_lifespan(
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
         build_services(app, settings, database, publisher=publisher)
-        app.state.subscriber = None
         yield
 
     return lifespan
-
-
-def encode_data(payload: str) -> str:
-    return base64.b64encode(payload.encode("utf-8")).decode("ascii")
 
 
 # --- Fixtures that seed a working agent -------------------------------------

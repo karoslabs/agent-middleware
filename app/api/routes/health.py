@@ -17,23 +17,22 @@ async def liveness() -> dict[str, str]:
 
 @router.get("/health/ready")
 async def readiness(request: Request) -> JSONResponse:
-    """Readiness probe: checks Firestore and the background subscriber."""
+    """Readiness probe: can this instance actually reach its store?
 
-    settings = request.app.state.settings
-    subscriber = getattr(request.app.state, "subscriber", None)
+    Firestore is the only hard dependency of a control plane read. Pub/Sub is
+    deliberately not probed: publishing happens on dispatch, and a broker blip
+    should surface as a 502 on that one call rather than pulling the whole
+    instance out of rotation.
+    """
+
     database = getattr(request.app.state, "db", None)
-
-    subscriber_running = bool(subscriber and subscriber.is_running)
-    subscriber_ready = not settings.enable_pull_subscriber or subscriber_running
     firestore_ready = await database.ping() if database is not None else False
 
-    is_ready = subscriber_ready and firestore_ready
     payload = {
-        "status": "ok" if is_ready else "degraded",
+        "status": "ok" if firestore_ready else "degraded",
         "firestore_reachable": firestore_ready,
-        "pull_subscriber_running": subscriber_running,
     }
     return JSONResponse(
         content=payload,
-        status_code=status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+        status_code=status.HTTP_200_OK if firestore_ready else status.HTTP_503_SERVICE_UNAVAILABLE,
     )

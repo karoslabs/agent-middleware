@@ -163,4 +163,8 @@ def _to_context_template(
         content=version.get("content"),
         schema_definition=version.get("schema_definition"),
         variables=version.get("variables") or [],
+        # `or []` rather than a plain .get default: a version written before
+        # assets existed has no key, and one written with an explicit null
+        # should read back as empty rather than blowing up validation.
+        assets=version.get("assets") or [],
     )

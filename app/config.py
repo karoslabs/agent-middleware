@@ -28,32 +28,59 @@ class Settings(BaseSettings):
     # --- Google Cloud / Pub/Sub ---
     gcp_project_id: str = Field(..., description="GCP project id used for all Pub/Sub resources")
 
-    pubsub_source_subscription_id: str = Field(
-        ..., description="Subscription id the background listener pulls messages from"
-    )
-    pubsub_destination_topic_id: str = Field(
-        ..., description="Topic id every forwarded message is published to"
-    )
-
     pubsub_emulator_host: str | None = Field(
         default=None,
         description="Set to host:port to talk to a local Pub/Sub emulator instead of GCP",
     )
 
-    # --- Pull subscriber tuning ---
-    enable_pull_subscriber: bool = Field(
-        default=True, description="Whether the background pull subscriber should start"
-    )
-    subscriber_max_messages: int = Field(default=50, ge=1)
-    subscriber_ack_deadline_seconds: int = Field(default=60, ge=10)
     publish_timeout_seconds: float = Field(default=10.0, gt=0)
 
     # --- Job dispatch (control plane -> agent-engine) ---
-    pubsub_job_topic_id: str | None = Field(
+    pubsub_job_topic_id: str = Field(
+        ...,
+        description=(
+            "The one topic this service publishes to: agent-engine's run-jobs topic "
+            "(e.g. karos-agent-runs-prep). Dispatch through POST /agents/{id}/jobs is "
+            "the only thing that publishes, so there is exactly one destination."
+        ),
+    )
+
+    # --- Service-to-service authentication ---
+    auth_enabled: bool = Field(
+        default=True,
+        description=(
+            "Verify the caller's identity on every non-health route. Leave on "
+            "everywhere except local development."
+        ),
+    )
+    auth_audience: str | None = Field(
         default=None,
         description=(
-            "Topic agent job payloads are dispatched to. Falls back to "
-            "PUBSUB_DESTINATION_TOPIC_ID when unset."
+            "Expected 'aud' claim of an inbound OIDC token — this service's own Cloud "
+            "Run URL. Required when auth_enabled and no dev token is configured."
+        ),
+    )
+    auth_allowed_service_accounts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Caller service-account emails allowed through. Empty means any identity "
+            "Google will vouch for, which is only safe behind Cloud Run IAM."
+        ),
+    )
+    auth_dev_token: str | None = Field(
+        default=None,
+        description=(
+            "Static bearer token accepted INSTEAD of an OIDC token — for local dev and "
+            "integration tests. Refused outright when environment=production."
+        ),
+    )
+
+    # --- GCS (binary template assets) ---
+    gcs_artifacts_bucket: str | None = Field(
+        default=None,
+        description=(
+            "Bucket holding binary template assets (images, fonts). Firestore stores "
+            "the gs:// URIs; the bytes live here."
         ),
     )
 
@@ -96,7 +123,18 @@ class Settings(BaseSettings):
     def job_topic_id(self) -> str:
         """Topic agent job payloads are published to."""
 
-        return self.pubsub_job_topic_id or self.pubsub_destination_topic_id
+        return self.pubsub_job_topic_id
+
+    @property
+    def dev_token_permitted(self) -> bool:
+        """Whether the static dev token may be honoured.
+
+        Never in production, regardless of what is configured: a shared secret in
+        an environment variable is a development affordance, and the failure mode
+        of leaving one set on a production deploy is silent, total auth bypass.
+        """
+
+        return self.auth_dev_token is not None and not self.is_production
 
 
 @lru_cache
