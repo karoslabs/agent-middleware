@@ -111,7 +111,9 @@ def test_assets_reach_the_dispatched_job_payload(
     )
     client.put(f"/agents/{agent['id']}/templates/primary", json={"template_ref": "carousel"})
 
-    dispatched = client.post(f"/agents/{agent['id']}/jobs", json={"input": {"topic": "coffee"}})
+    dispatched = client.post(
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "input": {"topic": "coffee"}}
+    )
     assert dispatched.status_code == 202, dispatched.text
 
     import json
@@ -135,6 +137,6 @@ def test_preview_shows_the_assets_a_dispatch_would_carry(
     )
     client.put(f"/agents/{agent['id']}/templates/primary", json={"template_ref": "carousel"})
 
-    payload = client.post(f"/agents/{agent['id']}/payload", json={}).json()
+    payload = client.post(f"/agents/{agent['id']}/payload", json={"client_slug": "acme"}).json()
 
     assert payload["template"]["assets"] == [LOGO]

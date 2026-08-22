@@ -100,9 +100,7 @@ class DispatchService:
 
         try:
             message_id = await self._publisher.publish_async(
-                data=json.dumps(payload.model_dump(mode="json"), ensure_ascii=False).encode(
-                    "utf-8"
-                ),
+                data=json.dumps(to_engine_message(payload), ensure_ascii=False).encode("utf-8"),
                 attributes=_message_attributes(context, request, run_id),
                 topic_id=self._settings.job_topic_id,
             )
@@ -141,7 +139,41 @@ def _build_payload(context: AgentContext, request: DispatchRequest, run_id: str)
         few_shot_examples=context.few_shot_examples,
         template=context.template,
         resolved_at=context.resolved_at,
+        client_slug=request.client_slug,
+        # The agent's slug IS the engine's product id: `instagram-agent`,
+        # `landing-builder-agent` and friends are named identically on both
+        # sides, which is what lets one identifier route the whole way through.
+        product_id=context.agent.slug,
+        run_kind=request.run_kind,
     )
+
+
+def to_engine_message(payload: JobPayload) -> dict[str, Any]:
+    """The bytes actually published. Carries two contracts at once, on purpose.
+
+    agent-engine's queue consumer validates the body against its own
+    ``RunJobRequestSchema``, which requires exactly three camelCase keys at the
+    top level -- ``clientSlug``, ``productId``, ``runKind`` -- and rejects
+    anything without them. A message shaped only like this module's
+    :class:`JobPayload` fails that check, gets nacked, and lands in the
+    dead-letter topic after five attempts.
+
+    Zod strips unknown keys rather than rejecting them, so the engine reads its
+    three and ignores the rest. That lets one message satisfy today's engine
+    *and* carry the resolved prompt, template and examples the engine will read
+    once it knows how -- no second topic, no versioned cutover.
+
+    The duplication (``client_slug`` and ``clientSlug`` both present) is the
+    price of that, and it is deliberate: dropping the snake_case originals
+    would make the payload inconsistent with every other schema here, and
+    dropping the camelCase aliases would break the engine.
+    """
+
+    body = payload.model_dump(mode="json")
+    body["clientSlug"] = payload.client_slug
+    body["productId"] = payload.product_id
+    body["runKind"] = payload.run_kind
+    return body
 
 
 def _run_snapshot(context: AgentContext, request: DispatchRequest) -> dict[str, Any]:
@@ -169,6 +201,8 @@ def _message_attributes(
         "run_id": run_id,
         "agent_id": context.agent.id,
         "agent_slug": context.agent.slug,
+        "clientSlug": request.client_slug,
+        "productId": context.agent.slug,
     }
     if request.job_type:
         attributes["job_type"] = request.job_type

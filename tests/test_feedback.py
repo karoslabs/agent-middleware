@@ -10,7 +10,12 @@ def run(client: TestClient, agent: dict[str, Any]) -> dict[str, Any]:
 
     dispatched = client.post(
         f"/agents/{agent['id']}/jobs",
-        json={"run_id": "run-1", "job_type": "social_post", "input": {"topic": "cold brew"}},
+        json={
+            "client_slug": "acme",
+            "run_id": "run-1",
+            "job_type": "social_post",
+            "input": {"topic": "cold brew"},
+        },
     )
     assert dispatched.status_code == 202, dispatched.text
 
@@ -263,7 +268,7 @@ def test_registered_run_without_dispatch_can_receive_feedback(
 def test_runs_can_be_listed_and_filtered_by_status(
     client: TestClient, agent: dict[str, Any], run: dict[str, Any]
 ) -> None:
-    client.post(f"/agents/{agent['id']}/jobs", json={"run_id": "run-2"})
+    client.post(f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "run_id": "run-2"})
 
     listed = client.get(f"/agents/{agent['id']}/runs").json()
     assert {item["id"] for item in listed["items"]} == {"run-1", "run-2"}

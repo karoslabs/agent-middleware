@@ -21,6 +21,7 @@ def test_dispatch_publishes_payload_and_records_run(
     response = client.post(
         f"/agents/{agent['id']}/jobs",
         json={
+            "client_slug": "acme",
             "job_type": "social_post",
             "input": {"topic": "cold brew"},
             "requested_by": "portal",
@@ -62,7 +63,7 @@ def test_run_snapshot_references_versions_instead_of_copying_bodies(
     client.put(f"/agents/{agent['id']}/templates/primary", json={"template_ref": template["id"]})
 
     run = client.post(
-        f"/agents/{agent['id']}/jobs", json={"input": {"topic": "matcha"}}
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "input": {"topic": "matcha"}}
     ).json()["run"]
 
     assert run["input_payload"] == {
@@ -76,16 +77,22 @@ def test_run_snapshot_references_versions_instead_of_copying_bodies(
 
 
 def test_caller_supplied_run_id_is_used(client: TestClient, agent: dict[str, Any]) -> None:
-    response = client.post(f"/agents/{agent['id']}/jobs", json={"run_id": "portal-run-1"})
+    response = client.post(
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "run_id": "portal-run-1"}
+    )
 
     assert response.json()["run"]["id"] == "portal-run-1"
     assert client.get(f"/agents/{agent['id']}/runs/portal-run-1").status_code == 200
 
 
 def test_duplicate_run_id_is_rejected(client: TestClient, agent: dict[str, Any]) -> None:
-    client.post(f"/agents/{agent['id']}/jobs", json={"run_id": "portal-run-1"})
+    client.post(
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "run_id": "portal-run-1"}
+    )
 
-    duplicate = client.post(f"/agents/{agent['id']}/jobs", json={"run_id": "portal-run-1"})
+    duplicate = client.post(
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "run_id": "portal-run-1"}
+    )
 
     assert duplicate.status_code == 409
 
@@ -95,18 +102,33 @@ def test_caller_attributes_cannot_override_routing_attributes(
 ) -> None:
     client.post(
         f"/agents/{agent['id']}/jobs",
-        json={"run_id": "run-x", "attributes": {"run_id": "spoofed", "tenant": "acme"}},
+        json={
+            "client_slug": "acme",
+            "run_id": "run-x",
+            "attributes": {
+                "run_id": "spoofed",
+                # The engine routes off these two; a caller must not be able to
+                # aim a job at another tenant or workflow through free-form
+                # attributes.
+                "clientSlug": "someone-else",
+                "productId": "not-this-one",
+                "tenant": "acme",
+            },
+        },
     )
 
     _, _, attributes = fake_publisher_client.published[0]
     assert attributes["run_id"] == "run-x"
+    assert attributes["clientSlug"] == "acme"
+    assert attributes["productId"] == agent["slug"]
+    # Anything that isn't a reserved routing key still passes through.
     assert attributes["tenant"] == "acme"
 
 
 def test_dispatch_requires_an_active_prompt(client: TestClient) -> None:
     client.post("/agents", json={"slug": "bare", "name": "Bare"})
 
-    response = client.post("/agents/bare/jobs", json={})
+    response = client.post("/agents/bare/jobs", json={"client_slug": "acme"})
 
     assert response.status_code == 422
     assert "no active system prompt" in response.json()["detail"]
@@ -115,7 +137,7 @@ def test_dispatch_requires_an_active_prompt(client: TestClient) -> None:
 def test_dispatch_refuses_a_disabled_agent(client: TestClient, agent: dict[str, Any]) -> None:
     client.patch(f"/agents/{agent['id']}/status", json={"status": "disabled"})
 
-    response = client.post(f"/agents/{agent['id']}/jobs", json={})
+    response = client.post(f"/agents/{agent['id']}/jobs", json={"client_slug": "acme"})
 
     assert response.status_code == 409
 
@@ -124,7 +146,8 @@ def test_payload_preview_publishes_nothing(
     client: TestClient, agent: dict[str, Any], fake_publisher_client: FakePublisherClient
 ) -> None:
     response = client.post(
-        f"/agents/{agent['id']}/payload", json={"input": {"topic": "preview"}}
+        f"/agents/{agent['id']}/payload",
+        json={"client_slug": "acme", "input": {"topic": "preview"}},
     )
 
     assert response.status_code == 200
@@ -142,10 +165,80 @@ def test_failed_publish_marks_the_run_failed(
 
     fake_publisher_client.publish = explode  # type: ignore[method-assign]
 
-    response = client.post(f"/agents/{agent['id']}/jobs", json={"run_id": "doomed"})
+    response = client.post(
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "run_id": "doomed"}
+    )
 
     assert response.status_code == 502
     run = client.get(f"/agents/{agent['id']}/runs/doomed").json()
     assert run["status"] == "failed"
     assert "pubsub unavailable" in run["error"]
     assert run["completed_at"] is not None
+
+
+# --- Engine wire compatibility ------------------------------------------------
+# agent-engine validates the message body against its own RunJobRequestSchema,
+# which requires three camelCase keys at the top level and nacks anything
+# without them. A regression here does not fail loudly: every dispatched job
+# would retry five times and land in the dead-letter topic.
+
+
+def test_published_message_carries_the_engine_routing_trio(
+    client: TestClient, agent: dict[str, Any], fake_publisher_client: FakePublisherClient
+) -> None:
+    response = client.post(
+        f"/agents/{agent['id']}/jobs",
+        json={"client_slug": "acme", "run_kind": "setup", "input": {"topic": "matcha"}},
+    )
+    assert response.status_code == 202, response.text
+
+    _topic, data, _attributes = fake_publisher_client.published[0]
+    body = json.loads(data)
+
+    # Exactly what agent-engine's RunJobRequestSchema reads.
+    assert body["clientSlug"] == "acme"
+    assert body["productId"] == agent["slug"]
+    assert body["runKind"] == "setup"
+
+
+def test_run_kind_defaults_to_recurring(
+    client: TestClient, agent: dict[str, Any], fake_publisher_client: FakePublisherClient
+) -> None:
+    client.post(f"/agents/{agent['id']}/jobs", json={"client_slug": "acme"})
+
+    _topic, data, _attributes = fake_publisher_client.published[0]
+    assert json.loads(data)["runKind"] == "recurring"
+
+
+def test_the_engine_trio_matches_the_richer_context_in_the_same_message(
+    client: TestClient, agent: dict[str, Any], fake_publisher_client: FakePublisherClient
+) -> None:
+    """Two shapes, one message — they must not disagree about the routing."""
+
+    client.post(f"/agents/{agent['id']}/jobs", json={"client_slug": "acme"})
+
+    _topic, data, _attributes = fake_publisher_client.published[0]
+    body = json.loads(data)
+
+    assert body["clientSlug"] == body["client_slug"]
+    assert body["productId"] == body["product_id"] == body["agent"]["slug"]
+    assert body["runKind"] == body["run_kind"]
+
+
+def test_dispatch_without_a_client_slug_is_refused(
+    client: TestClient, agent: dict[str, Any], fake_publisher_client: FakePublisherClient
+) -> None:
+    """Better a 422 than a job the engine cannot resolve a workspace for."""
+
+    response = client.post(f"/agents/{agent['id']}/jobs", json={"input": {"topic": "x"}})
+
+    assert response.status_code == 422
+    assert fake_publisher_client.published == []
+
+
+def test_an_unknown_run_kind_is_refused(client: TestClient, agent: dict[str, Any]) -> None:
+    response = client.post(
+        f"/agents/{agent['id']}/jobs", json={"client_slug": "acme", "run_kind": "backfill"}
+    )
+
+    assert response.status_code == 422

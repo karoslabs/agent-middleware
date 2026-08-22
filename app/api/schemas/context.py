@@ -9,7 +9,7 @@ document alone -- it never reads this database.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,10 @@ from app.api.schemas.run import RunRead
 from app.core.enums import AgentStatus, TemplateKind
 
 JOB_PAYLOAD_SCHEMA_VERSION = 1
+
+#: agent-engine's own `RunKindSchema`. A fresh client's first build is "setup";
+#: everything after it is "recurring".
+RunKind = Literal["setup", "recurring"]
 
 
 class AgentContextAgent(BaseModel):
@@ -89,6 +93,13 @@ class JobPayload(AgentContext):
 
     A superset of :class:`AgentContext`: same resolved configuration, plus the
     per-job identity and inputs supplied by the caller.
+
+    Note the routing trio below. agent-engine's own ``RunJobRequestSchema``
+    reads ``clientSlug`` / ``productId`` / ``runKind`` off the **top level** of
+    the message, in camelCase, and rejects a message without them. They are
+    held here in this module's snake_case and renamed on the wire by
+    :func:`app.services.dispatch.to_engine_message` — see that function for why
+    the message carries two shapes at once.
     """
 
     schema_version: int = JOB_PAYLOAD_SCHEMA_VERSION
@@ -98,6 +109,10 @@ class JobPayload(AgentContext):
     requested_by: str | None = None
     dispatched_at: datetime
 
+    client_slug: str = Field(description="Tenant the engine resolves its workspace against")
+    product_id: str = Field(description="Engine workflow to run; the agent's slug")
+    run_kind: RunKind = Field(default="recurring")
+
 
 class DispatchRequest(BaseModel):
     """Body for ``POST /agents/{agent_ref}/jobs``.
@@ -106,6 +121,17 @@ class DispatchRequest(BaseModel):
     would rather not build the payload themselves.
     """
 
+    client_slug: str = Field(
+        min_length=1,
+        max_length=128,
+        description=(
+            "Tenant this job runs for. Required: the engine resolves the client's "
+            "whole workspace from it, and there is no safe default."
+        ),
+    )
+    run_kind: RunKind = Field(
+        default="recurring", description="'setup' for a client's first build"
+    )
     run_id: str | None = Field(
         default=None, max_length=64, description="Caller-owned run id; generated when omitted"
     )

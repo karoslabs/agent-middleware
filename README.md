@@ -34,6 +34,23 @@ The engine never reads this database. Whatever the message carries is what the
 run used, which is what makes feedback attributable to an exact prompt version
 and template version.
 
+### The published message carries two shapes
+
+agent-engine validates every message against its own `RunJobRequestSchema`,
+which requires three camelCase keys at the **top level** — `clientSlug`,
+`productId`, `runKind` — and nacks anything without them (five attempts, then
+the dead-letter topic). So `to_engine_message()` in `services/dispatch.py`
+emits those three alongside the richer `JobPayload`.
+
+Zod strips unknown keys rather than rejecting them, so the engine reads its
+three and ignores the rest. One message therefore satisfies the engine as it is
+today *and* carries the resolved prompt, template and assets it will read once
+it knows how — no second topic, no versioned cutover. `clientSlug` duplicating
+`client_slug` is the deliberate price of that.
+
+`POST /agents/{id}/jobs` requires `client_slug`: the engine resolves a whole
+tenant workspace from it and there is no safe default.
+
 ### Why there is no generic Pub/Sub bridge
 
 An earlier version of this service relayed arbitrary messages between two
