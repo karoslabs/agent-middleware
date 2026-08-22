@@ -79,7 +79,8 @@ class Report:
 
     def record(self, outcome: str, what: str) -> None:
         self.counts[outcome] += 1
-        symbol = {"created": "+", "updated": "~", "unchanged": "=", "skipped": "-"}.get(outcome, "?")
+        symbols = {"created": "+", "updated": "~", "unchanged": "=", "skipped": "-"}
+        symbol = symbols.get(outcome, "?")
         print(f"  {symbol} {outcome:<9} {what}")
 
 
@@ -127,7 +128,13 @@ def collect(lab_root: Path) -> list[Doc]:
                 path = base / single
                 if path.is_file() and path.name not in SKIP_NAMES:
                     docs.append(
-                        Doc(client, agent, None, path.read_text(encoding="utf-8"), _rel(path, lab_root))
+                        Doc(
+                            client,
+                            agent,
+                            None,
+                            path.read_text(encoding="utf-8"),
+                            _rel(path, lab_root),
+                        )
                     )
                 continue
             folder = base / subdir if subdir else base
@@ -152,14 +159,22 @@ def _rel(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--karos-agents", default="../karos-agents", help="Path to a karos-agents checkout")
+    parser.add_argument(
+        "--karos-agents", default="../karos-agents", help="Path to a karos-agents checkout"
+    )
     parser.add_argument("--env", choices=sorted(ENVIRONMENTS), required=True)
     parser.add_argument("--bucket", help="Override the destination bucket")
-    parser.add_argument("--dry-run", action="store_true", help="Report what would change, write nothing")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report what would change, write nothing"
+    )
     args = parser.parse_args()
 
     lab_root = Path(args.karos_agents).resolve()
@@ -174,7 +189,8 @@ def main() -> int:
     bucket = None
     if not args.dry_run:
         try:
-            from google.cloud import storage
+            # Namespace package; same note as seed_legacy_agents.py.
+            from google.cloud import storage  # type: ignore[attr-defined]
         except ImportError:
             sys.exit("google-cloud-storage is not installed in this environment")
         # Fail before the first write, never partway through: a dependency or
@@ -201,7 +217,7 @@ def main() -> int:
         blob = bucket.blob(doc.object_path())
         if blob.exists():
             existing = blob.download_as_bytes()
-            if hashlib.sha256(existing).hexdigest() == hashlib.sha256(body.encode("utf-8")).hexdigest():
+            if hashlib.sha256(existing).hexdigest() == _sha(body):
                 report.record("unchanged", label)
                 continue
             outcome = "updated"
