@@ -11,7 +11,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from app.api.schemas.common import OperationResult, Page, Pagination, pagination
+from app.api.schemas.common import OperationResult, Page, Pagination, pagination, parse_rows
 from app.api.schemas.prompt import (
     FewShotExampleCreate,
     FewShotExampleRead,
@@ -139,7 +139,7 @@ async def list_examples(
         offset=page.offset,
     )
     return Page[FewShotExampleRead](
-        items=[FewShotExampleRead.model_validate(item) for item in items],
+        items=parse_rows(FewShotExampleRead, items, collection="examples"),
         limit=page.limit,
         offset=page.offset,
         total=total,

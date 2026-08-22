@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+import logging
+from typing import Annotated, Any
 
 from fastapi import Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+
+logger = logging.getLogger(__name__)
 
 SlugStr = Annotated[
     str,
@@ -60,3 +63,40 @@ class OperationResult(BaseModel):
 
     status: str = "ok"
     detail: str | None = None
+
+
+def parse_rows[ModelT: BaseModel](
+    model: type[ModelT], rows: list[dict[str, Any]], *, collection: str
+) -> list[ModelT]:
+    """Validate a listing, skipping rows this service cannot parse.
+
+    A list endpoint must not be brought down by one unreadable document. This
+    is not hypothetical: prep's Firestore already holds ``agents/`` documents
+    written by karosCMO's since-removed in-app agent engine (camelCase
+    ``systemPrompt`` / ``outputKind`` / ``runCount``, no ``slug``, no
+    ``created_at``). A plain comprehension raised ``ValidationError`` on those
+    and turned ``GET /agents`` into a 500 — every legitimate agent invisible
+    because two dead rows shared the collection name.
+
+    Fetch-by-id is deliberately left strict: asking for a specific document and
+    getting silence would be worse than an error, and nothing else in a listing
+    depends on that one row.
+
+    Skipped rows are logged at WARNING with their id, so this degrades loudly
+    rather than quietly under-reporting.
+    """
+
+    parsed: list[ModelT] = []
+    for row in rows:
+        try:
+            parsed.append(model.model_validate(row))
+        except ValidationError as exc:
+            logger.warning(
+                "Skipping unparseable %s document %r (%d validation error(s)); it does not "
+                "match %s and is most likely owned by another system sharing this database",
+                collection,
+                row.get("id", "<no id>"),
+                exc.error_count(),
+                model.__name__,
+            )
+    return parsed

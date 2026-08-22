@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from app.api.routes import agents, context, health, prompts, runs, templates
 from app.config import Settings, get_settings
@@ -174,6 +175,30 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)}
+        )
+
+    @app.exception_handler(ValidationError)
+    async def handle_unreadable_document(_: Request, exc: ValidationError) -> JSONResponse:
+        """A stored document that does not match this service's schema.
+
+        Listings skip these (see ``parse_rows``); fetching one by id
+        deliberately does not, because answering "here is that agent" with
+        invented fields would be worse than failing. This turns what would
+        otherwise be an unhandled traceback into something a reader can act on
+        — the usual cause is another system writing to a collection this
+        service also uses, which ``FIRESTORE_COLLECTION_PREFIX`` exists to
+        prevent.
+        """
+
+        logger.error("Stored document failed validation: %s", exc)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "detail": (
+                    "A stored document does not match this service's schema. It was most "
+                    "likely written by another system sharing this Firestore database."
+                )
+            },
         )
 
     @app.exception_handler(MessagePublishError)

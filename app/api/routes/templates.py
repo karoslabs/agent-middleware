@@ -14,7 +14,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.schemas.common import OperationResult, Page, Pagination, pagination
+from app.api.schemas.common import OperationResult, Page, Pagination, pagination, parse_rows
 from app.api.schemas.template import (
     AgentTemplateLinkCreate,
     AgentTemplateLinkRead,
@@ -74,7 +74,7 @@ async def list_templates(
         offset=page.offset,
     )
     return Page[TemplateRead](
-        items=[TemplateRead.model_validate(item) for item in items],
+        items=parse_rows(TemplateRead, items, collection="templates"),
         limit=page.limit,
         offset=page.offset,
         total=total,

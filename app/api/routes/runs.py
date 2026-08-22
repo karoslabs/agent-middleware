@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.schemas.common import Page, Pagination, pagination
+from app.api.schemas.common import Page, Pagination, pagination, parse_rows
 from app.api.schemas.prompt import FewShotExampleRead
 from app.api.schemas.run import (
     FeedbackCreate,
@@ -71,7 +71,7 @@ async def list_runs(
         agent["id"], status=run_status, limit=page.limit, offset=page.offset
     )
     return Page[RunRead](
-        items=[RunRead.model_validate(item) for item in items],
+        items=parse_rows(RunRead, items, collection="agent_runs"),
         limit=page.limit,
         offset=page.offset,
         has_more=has_more,
@@ -171,7 +171,7 @@ async def list_agent_feedback(
         offset=page.offset,
     )
     return Page[FeedbackRead](
-        items=[FeedbackRead.model_validate(item) for item in items],
+        items=parse_rows(FeedbackRead, items, collection="run_feedback"),
         limit=page.limit,
         offset=page.offset,
         has_more=has_more,

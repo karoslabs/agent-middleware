@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.schemas.agent import AgentCreate, AgentRead, AgentStatusUpdate, AgentUpdate
-from app.api.schemas.common import Page, Pagination, pagination
+from app.api.schemas.common import Page, Pagination, pagination, parse_rows
 from app.core.enums import AgentStatus
 from app.dependencies import get_agent_service
 from app.services.agents import AgentService
@@ -55,7 +55,7 @@ async def list_agents(
         offset=page.offset,
     )
     return Page[AgentRead](
-        items=[AgentRead.model_validate(item) for item in items],
+        items=parse_rows(AgentRead, items, collection="agents"),
         limit=page.limit,
         offset=page.offset,
         total=total,
