@@ -202,6 +202,31 @@ class AssetUploader:
     def uri_for(self, template_slug: str, source: Path) -> str:
         return f"gs://{self._bucket_name}/templates/{template_slug}/{source.name}"
 
+    def preflight(self) -> None:
+        """Fail before the first write if uploading cannot possibly work.
+
+        Learned the hard way: the storage import is lazy (so ``--dry-run`` needs
+        no client), which meant a missing ``google-cloud-storage`` surfaced only
+        once the first template with an asset came up — eleven documents into a
+        real run. Idempotency made the resume clean, but a half-written store is
+        not a state to rely on recovering from. Checked up front instead.
+        """
+
+        if not self._enabled:
+            return
+        if not self._bucket_name:
+            raise RuntimeError(
+                "--upload-assets was given but no bucket is configured; set "
+                "GCS_ARTIFACTS_BUCKET or pass --bucket"
+            )
+        try:
+            self._lazy_bucket()
+        except ImportError as exc:
+            raise RuntimeError(
+                "--upload-assets needs the google-cloud-storage package: "
+                "pip install -r requirements.txt"
+            ) from exc
+
     def _lazy_bucket(self) -> Any:
         if self._bucket is None:
             # Namespace package; see the same note in app/services/publisher.py.
@@ -480,6 +505,13 @@ async def run(args: argparse.Namespace) -> int:
         enabled=args.upload_assets and not args.dry_run,
         report=report,
     )
+    try:
+        uploader.preflight()
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        if database is not None:
+            database.close()
+        return 2
 
     # In a dry run nothing is read or written, so the services are never used;
     # constructing a Firestore client would demand credentials the caller may

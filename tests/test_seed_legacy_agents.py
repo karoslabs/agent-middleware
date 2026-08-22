@@ -265,3 +265,24 @@ async def test_reddit_carries_its_draft_only_rule_into_the_context(
     agent = await AgentService(seed_database).get("reddit-agent")
     assert agent["config"]["draft_only"] is True
     assert agent["config"]["replies_only"] is True
+
+
+# --- Upload preflight -------------------------------------------------------
+
+
+def test_preflight_rejects_upload_without_a_bucket() -> None:
+    """Catch an unusable upload config before the first Firestore write.
+
+    A real run once discovered a missing dependency eleven documents in;
+    idempotency made the resume clean, but a half-written store is not a state
+    worth relying on recovering from.
+    """
+
+    uploader = AssetUploader(None, enabled=True, report=Report())
+
+    with pytest.raises(RuntimeError, match="no bucket is configured"):
+        uploader.preflight()
+
+
+def test_preflight_is_a_no_op_when_uploads_are_disabled() -> None:
+    AssetUploader(None, enabled=False, report=Report()).preflight()
