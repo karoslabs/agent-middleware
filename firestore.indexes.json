@@ -1,0 +1,49 @@
+{
+  "//": [
+    "Composite indexes for the two high-volume collections. Everything else is",
+    "served by Firestore's automatic single-field indexes, or filtered in process",
+    "because the collection is admin-sized.",
+    "Deploy with: firebase deploy --only firestore:indexes"
+  ],
+  "indexes": [
+    {
+      "//": "GET /agents/{id}/runs - runs of an agent, newest first",
+      "collectionGroup": "agent_runs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "agent_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "GET /agents/{id}/runs?status=... - same, narrowed by status",
+      "collectionGroup": "agent_runs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "agent_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "GET /agents/{id}/feedback - best rated feedback for an agent",
+      "collectionGroup": "run_feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "agent_id", "order": "ASCENDING" },
+        { "fieldPath": "rating", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "GET /agents/{id}/feedback/examples - approved, well rated feedback",
+      "collectionGroup": "run_feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "agent_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "rating", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
