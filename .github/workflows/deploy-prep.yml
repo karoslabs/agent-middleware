@@ -46,7 +46,14 @@ jobs:
             echo "::error::Missing required repo variable(s): ${missing[*]}"
             exit 1
           fi
+          # pydantic-settings parses this one as JSON at import time, so a
+          # malformed value does not surface as a config error — it surfaces as
+          # a container that will not start, six minutes later, as a stack
+          # trace about lifespan context managers.
+          printf '%s' "$ALLOWED" | python3 -c 'import json,sys; p=json.load(sys.stdin); assert isinstance(p,list) and all(isinstance(x,str) for x in p)' \
+            || { echo "::error::PREP_AUTH_ALLOWED_SERVICE_ACCOUNTS must be a JSON array of strings, got: ${ALLOWED}"; exit 1; }
         env:
+          ALLOWED: ${{ vars.PREP_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}
           PREP_PROJECT_ID: ${{ vars.PREP_PROJECT_ID }}
           PREP_SERVICE_ACCOUNT: ${{ vars.PREP_SERVICE_ACCOUNT }}
           PREP_FIRESTORE_PROJECT_ID: ${{ vars.PREP_FIRESTORE_PROJECT_ID }}
@@ -68,12 +75,34 @@ jobs:
       - name: Set active project
         run: gcloud config set project "${{ vars.PREP_PROJECT_ID }}"
 
+      # Values arrive as environment variables rather than `${{ }}` expanded
+      # into the script text. Expansion happens before bash parses the line, so
+      # a value containing a double quote is re-parsed as shell syntax:
+      # AUTH_ALLOWED_SERVICE_ACCOUNTS is a JSON array, and its inner quotes were
+      # being eaten, delivering [sa@x.com] to the container, which is not JSON.
+      # It is also how a repo variable would become shell injection.
+      #
+      # `^|^` rather than the default comma for the same reason cloudbuild.yaml
+      # uses it: that JSON array gains a comma the moment a second caller is
+      # allowed, and a comma-delimited substitution list would split it
+      # mid-value. No substitution value can contain a pipe.
       - name: Build & deploy via Cloud Build
+        env:
+          SHA: ${{ github.sha }}
+          REGION: ${{ vars.PREP_REGION || 'us-central1' }}
+          PROJECT_ID: ${{ vars.PREP_PROJECT_ID }}
+          SERVICE_ACCOUNT: ${{ vars.PREP_SERVICE_ACCOUNT }}
+          PUBSUB_JOB_TOPIC: ${{ vars.PREP_PUBSUB_JOB_TOPIC }}
+          FIRESTORE_PROJECT_ID: ${{ vars.PREP_FIRESTORE_PROJECT_ID }}
+          FIRESTORE_DATABASE: ${{ vars.PREP_FIRESTORE_DATABASE_ID || 'prep' }}
+          GCS_ARTIFACTS_BUCKET: ${{ vars.PREP_GCS_ARTIFACTS_BUCKET }}
+          AUTH_AUDIENCE: ${{ vars.PREP_AUTH_AUDIENCE }}
+          AUTH_ALLOWED_SERVICE_ACCOUNTS: ${{ vars.PREP_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}
         run: |
           gcloud builds submit \
-            --project="${{ vars.PREP_PROJECT_ID }}" \
+            --project="$PROJECT_ID" \
             --config=cloudbuild.yaml \
-            --substitutions=COMMIT_SHA="${{ github.sha }}",_REGION="${{ vars.PREP_REGION || 'us-central1' }}",_SERVICE="agent-middleware",_SERVICE_ACCOUNT="${{ vars.PREP_SERVICE_ACCOUNT }}",_ENVIRONMENT="staging",_GCP_PROJECT_ID="${{ vars.PREP_PROJECT_ID }}",_PUBSUB_JOB_TOPIC_ID="${{ vars.PREP_PUBSUB_JOB_TOPIC }}",_FIRESTORE_PROJECT_ID="${{ vars.PREP_FIRESTORE_PROJECT_ID }}",_FIRESTORE_DATABASE="${{ vars.PREP_FIRESTORE_DATABASE_ID || 'prep' }}",_GCS_ARTIFACTS_BUCKET="${{ vars.PREP_GCS_ARTIFACTS_BUCKET }}",_AUTH_AUDIENCE="${{ vars.PREP_AUTH_AUDIENCE }}",_AUTH_ALLOWED_SERVICE_ACCOUNTS="${{ vars.PREP_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}"
+            --substitutions="^|^COMMIT_SHA=$SHA|_REGION=$REGION|_SERVICE=agent-middleware|_SERVICE_ACCOUNT=$SERVICE_ACCOUNT|_ENVIRONMENT=staging|_GCP_PROJECT_ID=$PROJECT_ID|_PUBSUB_JOB_TOPIC_ID=$PUBSUB_JOB_TOPIC|_FIRESTORE_PROJECT_ID=$FIRESTORE_PROJECT_ID|_FIRESTORE_DATABASE=$FIRESTORE_DATABASE|_GCS_ARTIFACTS_BUCKET=$GCS_ARTIFACTS_BUCKET|_AUTH_AUDIENCE=$AUTH_AUDIENCE|_AUTH_ALLOWED_SERVICE_ACCOUNTS=$AUTH_ALLOWED_SERVICE_ACCOUNTS"
 
       # A deploy that starts but cannot reach Firestore is worse than a failed
       # one, because nothing else will tell you until a dispatch fails.

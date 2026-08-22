@@ -66,7 +66,12 @@ jobs:
             echo "::error::Missing required repo variable(s): ${missing[*]} — refusing to deploy to production with an incomplete config."
             exit 1
           fi
+          # See deploy-prep.yml: malformed JSON here does not fail the deploy,
+          # it fails the container's startup with an unrelated-looking trace.
+          printf '%s' "$ALLOWED" | python3 -c 'import json,sys; p=json.load(sys.stdin); assert isinstance(p,list) and all(isinstance(x,str) for x in p)' \
+            || { echo "::error::PROD_AUTH_ALLOWED_SERVICE_ACCOUNTS must be a JSON array of strings, got: ${ALLOWED}"; exit 1; }
         env:
+          ALLOWED: ${{ vars.PROD_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}
           PROD_PROJECT_ID: ${{ vars.PROD_PROJECT_ID }}
           PROD_SERVICE_ACCOUNT: ${{ vars.PROD_SERVICE_ACCOUNT }}
           PROD_FIRESTORE_PROJECT_ID: ${{ vars.PROD_FIRESTORE_PROJECT_ID }}
@@ -88,12 +93,26 @@ jobs:
       - name: Set active project
         run: gcloud config set project "${{ vars.PROD_PROJECT_ID }}"
 
+      # Env vars, not `${{ }}` inlined into the script, and `^|^` rather than a
+      # comma delimiter — see the matching step in deploy-prep.yml for why both
+      # matter. AUTH_ALLOWED_SERVICE_ACCOUNTS is JSON and breaks under either.
       - name: Build & deploy via Cloud Build
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          REGION: ${{ vars.PROD_REGION || 'europe-west1' }}
+          PROJECT_ID: ${{ vars.PROD_PROJECT_ID }}
+          SERVICE_ACCOUNT: ${{ vars.PROD_SERVICE_ACCOUNT }}
+          PUBSUB_JOB_TOPIC: ${{ vars.PROD_PUBSUB_JOB_TOPIC }}
+          FIRESTORE_PROJECT_ID: ${{ vars.PROD_FIRESTORE_PROJECT_ID }}
+          FIRESTORE_DATABASE: ${{ vars.PROD_FIRESTORE_DATABASE_ID || '(default)' }}
+          GCS_ARTIFACTS_BUCKET: ${{ vars.PROD_GCS_ARTIFACTS_BUCKET }}
+          AUTH_AUDIENCE: ${{ vars.PROD_AUTH_AUDIENCE }}
+          AUTH_ALLOWED_SERVICE_ACCOUNTS: ${{ vars.PROD_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}
         run: |
           gcloud builds submit \
-            --project="${{ vars.PROD_PROJECT_ID }}" \
+            --project="$PROJECT_ID" \
             --config=cloudbuild.yaml \
-            --substitutions=COMMIT_SHA="${{ steps.sha.outputs.sha }}",_REGION="${{ vars.PROD_REGION || 'europe-west1' }}",_SERVICE="agent-middleware",_SERVICE_ACCOUNT="${{ vars.PROD_SERVICE_ACCOUNT }}",_ENVIRONMENT="production",_GCP_PROJECT_ID="${{ vars.PROD_PROJECT_ID }}",_PUBSUB_JOB_TOPIC_ID="${{ vars.PROD_PUBSUB_JOB_TOPIC }}",_FIRESTORE_PROJECT_ID="${{ vars.PROD_FIRESTORE_PROJECT_ID }}",_FIRESTORE_DATABASE="${{ vars.PROD_FIRESTORE_DATABASE_ID || '(default)' }}",_GCS_ARTIFACTS_BUCKET="${{ vars.PROD_GCS_ARTIFACTS_BUCKET }}",_AUTH_AUDIENCE="${{ vars.PROD_AUTH_AUDIENCE }}",_AUTH_ALLOWED_SERVICE_ACCOUNTS="${{ vars.PROD_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}"
+            --substitutions="^|^COMMIT_SHA=$SHA|_REGION=$REGION|_SERVICE=agent-middleware|_SERVICE_ACCOUNT=$SERVICE_ACCOUNT|_ENVIRONMENT=production|_GCP_PROJECT_ID=$PROJECT_ID|_PUBSUB_JOB_TOPIC_ID=$PUBSUB_JOB_TOPIC|_FIRESTORE_PROJECT_ID=$FIRESTORE_PROJECT_ID|_FIRESTORE_DATABASE=$FIRESTORE_DATABASE|_GCS_ARTIFACTS_BUCKET=$GCS_ARTIFACTS_BUCKET|_AUTH_AUDIENCE=$AUTH_AUDIENCE|_AUTH_ALLOWED_SERVICE_ACCOUNTS=$AUTH_ALLOWED_SERVICE_ACCOUNTS"
 
       - name: Verify the new revision is serving
         run: |
