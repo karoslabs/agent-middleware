@@ -57,3 +57,27 @@ class FeedbackStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     NEEDS_CHANGES = "needs_changes"
+
+class ModelVendor(StrEnum):
+    """Who serves a model. Distinct from where it runs: Claude on Vertex is
+    still Anthropic's model, and the engine's router cares about both."""
+
+    ANTHROPIC = "anthropic"
+    GOOGLE = "google"
+    META = "meta"
+    OTHER = "other"
+
+
+class ModelAvailability(StrEnum):
+    """Whether a Studio author may select this model.
+
+    ``not_enabled`` is the interesting one: Vertex offers it, this deployment
+    does not route it. Listed and shown disabled rather than hidden, because a
+    catalog that silently omits models reads as "this is everything Vertex
+    has", and someone concludes a model is unavailable when it is one config
+    change away.
+    """
+
+    AVAILABLE = "available"
+    NOT_ENABLED = "not_enabled"
+    RETIRED = "retired"

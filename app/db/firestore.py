@@ -50,6 +50,8 @@ AGENTS = "agents"
 TEMPLATES = "templates"
 RUNS = "agent_runs"
 FEEDBACK = "run_feedback"
+MODELS = "models"
+MODEL_ACCESS_REQUESTS = "model_access_requests"
 
 # Subcollections.
 PROMPTS = "prompts"

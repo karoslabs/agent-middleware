@@ -17,6 +17,7 @@ from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
 from app.services.feedback import FeedbackService
+from app.services.models import ModelService
 from app.services.prompts import PromptService
 from app.services.runs import RunService
 from app.services.templates import TemplateService
@@ -40,6 +41,10 @@ def get_prompt_service(request: Request) -> PromptService:
 
 def get_template_service(request: Request) -> TemplateService:
     return request.app.state.template_service
+
+
+def get_model_service(request: Request) -> ModelService:
+    return request.app.state.model_service
 
 
 def get_run_service(request: Request) -> RunService:

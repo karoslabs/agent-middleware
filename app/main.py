@@ -27,7 +27,7 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.api.routes import agents, context, health, prompts, runs, templates
+from app.api.routes import agents, context, health, models, prompts, runs, templates
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     IncompleteAgentConfigurationError,
@@ -43,6 +43,7 @@ from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
 from app.services.feedback import FeedbackService
+from app.services.models import ModelService
 from app.services.prompts import PromptService
 from app.services.publisher import PublisherService
 from app.services.runs import RunService
@@ -68,6 +69,7 @@ def build_services(
     agent_service = AgentService(database)
     prompt_service = PromptService(database)
     template_service = TemplateService(database)
+    model_service = ModelService(database)
     run_service = RunService(database)
     context_service = ContextService(settings, agent_service, prompt_service, template_service)
 
@@ -77,6 +79,7 @@ def build_services(
     app.state.agent_service = agent_service
     app.state.prompt_service = prompt_service
     app.state.template_service = template_service
+    app.state.model_service = model_service
     app.state.run_service = run_service
     app.state.feedback_service = FeedbackService(database, run_service, prompt_service)
     app.state.context_service = context_service
@@ -145,6 +148,7 @@ def create_app() -> FastAPI:
     app.include_router(prompts.router, dependencies=protected)
     app.include_router(templates.router, dependencies=protected)
     app.include_router(templates.agent_router, dependencies=protected)
+    app.include_router(models.router, dependencies=protected)
     app.include_router(context.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
 
