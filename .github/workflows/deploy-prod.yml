@@ -1,0 +1,103 @@
+name: Deploy to Production
+
+# Manual only. Never triggered by a push, and never by prep succeeding — the
+# only way this runs is a human clicking "Run workflow" (or
+# `gh workflow run deploy-prod.yml`).
+#
+# Unlike agent-engine's promote workflow, this one rebuilds from source rather
+# than copying prep's image. agent-engine's images are large and slow to
+# build, which makes byte-for-byte promotion worth the cross-project registry
+# plumbing; this is a small Python service where a rebuild takes well under a
+# minute, and rebuilding keeps prod's image in prod's own registry with no
+# cross-project read grant to maintain. The SHA input is what pins *which*
+# source, so a promotion is still an exact, named commit.
+#
+# The approval gate is the GitHub Environment named "production" — configure
+# required reviewers on it in Settings > Environments. Without that this is
+# still manual-only, just without a human pause before the job starts.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to deploy (blank = tip of main). Use a SHA already verified in prep."
+        required: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build & deploy (production)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Resolve SHA
+        id: sha
+        run: |
+          SHA="${{ inputs.sha || github.sha }}"
+          # The full 40-character form: actions/checkout treats a short SHA as
+          # a branch/tag glob and fails to fetch it.
+          if [ "${#SHA}" -ne 40 ]; then
+            echo "::error::Provide the full 40-character SHA (got '${SHA}', ${#SHA} chars)."
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Deploying SHA: $SHA"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+
+      - name: Validate required repo variables
+        run: |
+          missing=()
+          for v in PROD_PROJECT_ID PROD_SERVICE_ACCOUNT PROD_FIRESTORE_PROJECT_ID \
+                   PROD_PUBSUB_JOB_TOPIC PROD_GCS_ARTIFACTS_BUCKET PROD_AUTH_AUDIENCE \
+                   GCP_WIF_PROVIDER GCP_DEPLOYER_SA; do
+            [ -n "${!v}" ] || missing+=("$v")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required repo variable(s): ${missing[*]} — refusing to deploy to production with an incomplete config."
+            exit 1
+          fi
+        env:
+          PROD_PROJECT_ID: ${{ vars.PROD_PROJECT_ID }}
+          PROD_SERVICE_ACCOUNT: ${{ vars.PROD_SERVICE_ACCOUNT }}
+          PROD_FIRESTORE_PROJECT_ID: ${{ vars.PROD_FIRESTORE_PROJECT_ID }}
+          PROD_PUBSUB_JOB_TOPIC: ${{ vars.PROD_PUBSUB_JOB_TOPIC }}
+          PROD_GCS_ARTIFACTS_BUCKET: ${{ vars.PROD_GCS_ARTIFACTS_BUCKET }}
+          PROD_AUTH_AUDIENCE: ${{ vars.PROD_AUTH_AUDIENCE }}
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_DEPLOYER_SA: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set active project
+        run: gcloud config set project "${{ vars.PROD_PROJECT_ID }}"
+
+      - name: Build & deploy via Cloud Build
+        run: |
+          gcloud builds submit \
+            --project="${{ vars.PROD_PROJECT_ID }}" \
+            --config=cloudbuild.yaml \
+            --substitutions=COMMIT_SHA="${{ steps.sha.outputs.sha }}",_REGION="${{ vars.PROD_REGION || 'europe-west1' }}",_SERVICE="agent-middleware",_SERVICE_ACCOUNT="${{ vars.PROD_SERVICE_ACCOUNT }}",_ENVIRONMENT="production",_GCP_PROJECT_ID="${{ vars.PROD_PROJECT_ID }}",_PUBSUB_JOB_TOPIC_ID="${{ vars.PROD_PUBSUB_JOB_TOPIC }}",_FIRESTORE_PROJECT_ID="${{ vars.PROD_FIRESTORE_PROJECT_ID }}",_FIRESTORE_DATABASE="${{ vars.PROD_FIRESTORE_DATABASE_ID || '(default)' }}",_GCS_ARTIFACTS_BUCKET="${{ vars.PROD_GCS_ARTIFACTS_BUCKET }}",_AUTH_AUDIENCE="${{ vars.PROD_AUTH_AUDIENCE }}",_AUTH_ALLOWED_SERVICE_ACCOUNTS="${{ vars.PROD_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}"
+
+      - name: Verify the new revision is serving
+        run: |
+          gcloud run services describe agent-middleware \
+            --project="${{ vars.PROD_PROJECT_ID }}" \
+            --region="${{ vars.PROD_REGION || 'europe-west1' }}" \
+            --format='value(status.url,status.latestReadyRevisionName)'

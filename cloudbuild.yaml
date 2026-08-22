@@ -1,0 +1,81 @@
+# Build the control plane image and deploy it to one Cloud Run service.
+#
+# Invoked by .github/workflows/deploy-{prep,prod}.yml; the environment is
+# entirely a matter of substitutions, so the two workflows differ only in the
+# values they pass.
+#
+# One-time setup per environment (prep is already done — see the session notes
+# in README.md):
+#
+#   1. A runtime service account, e.g.
+#        gcloud iam service-accounts create agent-middleware-sa --project=$PROJECT
+#   2. Grant it:
+#        roles/datastore.user            on the FIRESTORE project (karoscmo)
+#        roles/pubsub.publisher          on the run-jobs topic (topic-scoped)
+#   3. Let karos-cmo call it:
+#        gcloud run services add-iam-policy-binding agent-middleware \
+#          --member="serviceAccount:<karos-cmo runtime SA>" --role=roles/run.invoker
+#   4. Widen the GitHub WIF provider's attributeCondition to trust
+#      repo:karoslabs/agent-middleware. This is an IAM trust boundary — every
+#      workflow in that repo gains the deployer SA's rights — so it is a
+#      deliberate change, not something a deploy should perform for itself.
+
+substitutions:
+  _REGION: us-central1
+  _REPO: karos
+  _SERVICE: agent-middleware
+  _SERVICE_ACCOUNT: ""
+  _ENVIRONMENT: staging
+  _GCP_PROJECT_ID: ""
+  _PUBSUB_JOB_TOPIC_ID: ""
+  _FIRESTORE_PROJECT_ID: ""
+  _FIRESTORE_DATABASE: ""
+  _GCS_ARTIFACTS_BUCKET: ""
+  # This service's own Cloud Run URL. Mandatory: app/security.py refuses to
+  # verify an identity token without an audience to bind it to, because Google
+  # issues valid tokens to every account on every project and the audience is
+  # the only claim that ties one to this service.
+  _AUTH_AUDIENCE: ""
+  # JSON array of caller service-account emails.
+  _AUTH_ALLOWED_SERVICE_ACCOUNTS: "[]"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      # Never public: karos-cmo reaches this through Cloud Run IAM, and the
+      # app checks the caller's identity again on top of that.
+      - --no-allow-unauthenticated
+      - --service-account=${_SERVICE_ACCOUNT}
+      - --memory=1Gi
+      # `^|^` delimiter, not the default comma: AUTH_ALLOWED_SERVICE_ACCOUNTS is
+      # a JSON array that will contain commas as soon as there are two callers,
+      # and a comma-delimited list would split it mid-value. `|` cannot appear
+      # in a service-account email or a bucket name.
+      - "--set-env-vars=^|^ENVIRONMENT=${_ENVIRONMENT}|LOG_LEVEL=INFO|GCP_PROJECT_ID=${_GCP_PROJECT_ID}|PUBSUB_JOB_TOPIC_ID=${_PUBSUB_JOB_TOPIC_ID}|FIRESTORE_PROJECT_ID=${_FIRESTORE_PROJECT_ID}|FIRESTORE_DATABASE=${_FIRESTORE_DATABASE}|GCS_ARTIFACTS_BUCKET=${_GCS_ARTIFACTS_BUCKET}|AUTH_ENABLED=true|AUTH_AUDIENCE=${_AUTH_AUDIENCE}|AUTH_ALLOWED_SERVICE_ACCOUNTS=${_AUTH_ALLOWED_SERVICE_ACCOUNTS}"
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA

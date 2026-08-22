@@ -1,0 +1,91 @@
+name: Deploy to Prep
+
+# Every push to main that passes CI is built and deployed to the
+# agent-middleware Cloud Run service in karoscmo-prep. Production is never
+# touched here — see deploy-prod.yml, which is manual by design.
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch: {}
+
+concurrency:
+  # Not cancel-in-progress: killing a half-finished `gcloud run deploy` is a
+  # worse outcome than waiting for it.
+  group: deploy-prep
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation — no service-account key
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Build & deploy (prep)
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: prep
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Fail on a missing variable rather than deploying a service with a
+      # blank Firestore database or, worse, a blank AUTH_AUDIENCE — which the
+      # app answers with a 500 on every request.
+      - name: Validate required repo variables
+        run: |
+          missing=()
+          for v in PREP_PROJECT_ID PREP_SERVICE_ACCOUNT PREP_FIRESTORE_PROJECT_ID \
+                   PREP_PUBSUB_JOB_TOPIC PREP_GCS_ARTIFACTS_BUCKET PREP_AUTH_AUDIENCE \
+                   GCP_WIF_PROVIDER GCP_DEPLOYER_SA; do
+            [ -n "${!v}" ] || missing+=("$v")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required repo variable(s): ${missing[*]}"
+            exit 1
+          fi
+        env:
+          PREP_PROJECT_ID: ${{ vars.PREP_PROJECT_ID }}
+          PREP_SERVICE_ACCOUNT: ${{ vars.PREP_SERVICE_ACCOUNT }}
+          PREP_FIRESTORE_PROJECT_ID: ${{ vars.PREP_FIRESTORE_PROJECT_ID }}
+          PREP_PUBSUB_JOB_TOPIC: ${{ vars.PREP_PUBSUB_JOB_TOPIC }}
+          PREP_GCS_ARTIFACTS_BUCKET: ${{ vars.PREP_GCS_ARTIFACTS_BUCKET }}
+          PREP_AUTH_AUDIENCE: ${{ vars.PREP_AUTH_AUDIENCE }}
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_DEPLOYER_SA: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set active project
+        run: gcloud config set project "${{ vars.PREP_PROJECT_ID }}"
+
+      - name: Build & deploy via Cloud Build
+        run: |
+          gcloud builds submit \
+            --project="${{ vars.PREP_PROJECT_ID }}" \
+            --config=cloudbuild.yaml \
+            --substitutions=COMMIT_SHA="${{ github.sha }}",_REGION="${{ vars.PREP_REGION || 'us-central1' }}",_SERVICE="agent-middleware",_SERVICE_ACCOUNT="${{ vars.PREP_SERVICE_ACCOUNT }}",_ENVIRONMENT="staging",_GCP_PROJECT_ID="${{ vars.PREP_PROJECT_ID }}",_PUBSUB_JOB_TOPIC_ID="${{ vars.PREP_PUBSUB_JOB_TOPIC }}",_FIRESTORE_PROJECT_ID="${{ vars.PREP_FIRESTORE_PROJECT_ID }}",_FIRESTORE_DATABASE="${{ vars.PREP_FIRESTORE_DATABASE_ID || 'prep' }}",_GCS_ARTIFACTS_BUCKET="${{ vars.PREP_GCS_ARTIFACTS_BUCKET }}",_AUTH_AUDIENCE="${{ vars.PREP_AUTH_AUDIENCE }}",_AUTH_ALLOWED_SERVICE_ACCOUNTS="${{ vars.PREP_AUTH_ALLOWED_SERVICE_ACCOUNTS || '[]' }}"
+
+      # A deploy that starts but cannot reach Firestore is worse than a failed
+      # one, because nothing else will tell you until a dispatch fails.
+      - name: Verify the new revision is serving
+        run: |
+          URL=$(gcloud run services describe agent-middleware \
+            --project="${{ vars.PREP_PROJECT_ID }}" \
+            --region="${{ vars.PREP_REGION || 'us-central1' }}" \
+            --format='value(status.url)')
+          echo "Deployed: $URL"
+          gcloud run services describe agent-middleware \
+            --project="${{ vars.PREP_PROJECT_ID }}" \
+            --region="${{ vars.PREP_REGION || 'us-central1' }}" \
+            --format='value(status.conditions)' | grep -q 'True' \
+            || { echo "::error::Revision is not Ready"; exit 1; }

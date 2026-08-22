@@ -1,0 +1,52 @@
+name: CI
+
+# The single source of truth for "does this commit pass". Runs on its own for
+# pull requests, and is called as a reusable workflow by both deploys — so a
+# deploy can never ship something CI would have rejected.
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_call:
+
+concurrency:
+  # Per-ref: a new push supersedes an in-flight run of the same branch/PR, but
+  # main and a PR never cancel each other.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Test · Lint · Type-check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # Runs first: it needs no credentials, no network and no emulator (the
+      # suite fakes Pub/Sub and Firestore), so it is both the fastest signal
+      # and the one most likely to catch a real regression.
+      - name: Run tests
+        run: pytest -q
+
+      - name: Lint
+        run: ruff check .
+
+      # `scripts/` as well as `app/`: the migration seeder imports the same
+      # service layer the API does, so a signature change that breaks it is a
+      # real break even though nothing serves it.
+      - name: Type-check
+        run: mypy app scripts
