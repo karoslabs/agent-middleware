@@ -15,18 +15,24 @@ against the currently active version first, and skipped when equal. The three
 outcomes are reported separately (``created`` / ``updated`` / ``unchanged``) so
 a second run visibly does nothing.
 
-Model-agnostic conversion, and its limit
-----------------------------------------
-YAML frontmatter is stripped mechanically -- it is skill-discovery metadata
-(``name:``, ``triggers:``, ``model:``) that means nothing outside Claude Skills,
-and removing it is a safe, verifiable transformation.
+Model-agnostic conversion
+-------------------------
+Two mechanisms, in order:
 
-Everything else is only *detected*, never rewritten. Prose like "fan out
-parallel sub-agents via the Task tool" or "never draft posts on Opus" needs a
-human to decide what it becomes in a model-agnostic system; a regex that
-deleted the sentence would silently drop real instructions and leave a prompt
-that reads fine and behaves wrong. The script prints a warning per finding and
-exits non-zero under ``--strict`` so CI can hold the line.
+1. **Frontmatter is stripped.** Skill-discovery metadata (``name:``,
+   ``triggers:``, ``model:``) means nothing outside Claude Skills; removing the
+   block is mechanical and verifiable.
+2. **Harness vocabulary is rewritten** by the reviewed substitutions in
+   :mod:`scripts.neutralize` -- ``WebSearch`` becomes web search, the Task-tool
+   fan-out becomes independent research tasks, ``claude-opus-4-8`` becomes a
+   reasoning *tier*. Each rule is hand-written against an observed phrase and
+   preserves the instruction; nothing is deleted. ``--no-neutralize`` seeds the
+   raw legacy text instead.
+
+:func:`find_claude_isms` then runs on the **rewritten** text, so a rule that
+under-covers still trips the detector and ``--strict`` still fails the run.
+Coverage is verified, not assumed -- which is what makes rewriting safe here
+where a blind regex sweep would not be.
 
 Usage
 -----
@@ -77,6 +83,7 @@ from scripts.legacy_manifest import (  # noqa: E402
     LegacyAgentSpec,
     TemplateSource,
 )
+from scripts.neutralize import neutralize  # noqa: E402
 
 logger = logging.getLogger("seed")
 
@@ -102,8 +109,8 @@ ENVIRONMENTS: dict[str, dict[str, str]] = {
 
 FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n", re.DOTALL)
 
-#: Residues of the single-shot Claude harness. Detected and reported, never
-#: auto-rewritten -- see the module docstring.
+#: Residues of the single-shot Claude harness. Evaluated against the text
+#: AFTER neutralisation, so this doubles as the coverage check on those rules.
 CLAUDE_ISMS: tuple[tuple[str, str], ...] = (
     (r"\bsubagent_type\b", "Claude Task-tool fan-out"),
     (r"\bTask tool\b", "Claude Task-tool fan-out"),
@@ -164,15 +171,25 @@ def find_claude_isms(text: str) -> list[str]:
     return found
 
 
-def compose_prompt(root: Path, spec: LegacyAgentSpec) -> str:
-    """SKILL.md body plus the reference docs the manifest deems reusable."""
+def compose_prompt(
+    root: Path, spec: LegacyAgentSpec, *, apply_neutralize: bool = True
+) -> tuple[str, list[str]]:
+    """SKILL.md body plus the reference docs the manifest deems reusable.
+
+    Returns the composed prompt and the names of any neutralisation rules that
+    fired, so the run can report what it rewrote rather than doing it silently.
+    """
 
     sections = [strip_frontmatter(read_source(root, spec.skill_path)).strip()]
     for reference in spec.reference_paths:
         body = strip_frontmatter(read_source(root, reference)).strip()
         title = Path(reference).stem.replace("-", " ").title()
         sections.append(f"# Reference: {title}\n\n{body}")
-    return "\n\n---\n\n".join(sections) + "\n"
+    composed = "\n\n---\n\n".join(sections) + "\n"
+
+    if not apply_neutralize:
+        return composed, []
+    return neutralize(composed)
 
 
 def normalized(text: str | None) -> str:
@@ -283,6 +300,7 @@ class Seeder:
         uploader: AssetUploader,
         report: Report,
         dry_run: bool,
+        neutralize_prompts: bool = True,
     ) -> None:
         self._root = root
         self._agents = agents
@@ -291,6 +309,7 @@ class Seeder:
         self._uploader = uploader
         self._report = report
         self._dry_run = dry_run
+        self._neutralize = neutralize_prompts
 
     async def seed_all(self) -> None:
         for spec in AGENT_SPECS:
@@ -360,8 +379,14 @@ class Seeder:
     # --- Prompt ----------------------------------------------------------
 
     async def _upsert_prompt(self, spec: LegacyAgentSpec) -> None:
-        content = compose_prompt(self._root, spec)
+        content, rewrites = compose_prompt(
+            self._root, spec, apply_neutralize=self._neutralize
+        )
+        if rewrites:
+            print(f"    neutralized: {', '.join(rewrites)}")
 
+        # Runs on the REWRITTEN text: a rule that under-covers still trips this,
+        # so coverage is verified rather than assumed.
         for label in find_claude_isms(content):
             self._report.warn(f"{spec.slug}: prompt still contains {label}")
 
@@ -496,6 +521,7 @@ async def run(args: argparse.Namespace) -> int:
         f"/{settings.firestore_database}\n"
         f"  bucket      : {settings.gcs_artifacts_bucket}\n"
         f"  asset upload: {'on' if args.upload_assets else 'OFF (URIs recorded only)'}\n"
+        f"  neutralize  : {'OFF (raw legacy text)' if args.no_neutralize else 'on'}\n"
         f"  mode        : {'DRY RUN - nothing is written' if args.dry_run else 'WRITING'}"
     )
 
@@ -524,6 +550,7 @@ async def run(args: argparse.Namespace) -> int:
         uploader=uploader,
         report=report,
         dry_run=args.dry_run,
+        neutralize_prompts=not args.no_neutralize,
     )
 
     try:
@@ -575,6 +602,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Report what would change without touching Firestore or GCS",
+    )
+    parser.add_argument(
+        "--no-neutralize",
+        action="store_true",
+        help=(
+            "Seed prompts exactly as the lab repo has them, skipping the "
+            "harness-vocabulary rewrites (see scripts/neutralize.py)"
+        ),
     )
     parser.add_argument(
         "--strict",

@@ -187,11 +187,12 @@ async def test_a_changed_source_produces_a_second_version(
     import scripts.seed_legacy_agents as seed_module
 
     original = seed_module.compose_prompt
-    monkeypatch.setattr(
-        seed_module,
-        "compose_prompt",
-        lambda root, spec: original(root, spec) + "\n\nA newly added house rule.\n",
-    )
+
+    def with_extra_rule(root, spec, *, apply_neutralize=True):  # type: ignore[no-untyped-def]
+        text, rewrites = original(root, spec, apply_neutralize=apply_neutralize)
+        return text + "\n\nA newly added house rule.\n", rewrites
+
+    monkeypatch.setattr(seed_module, "compose_prompt", with_extra_rule)
 
     report = Report()
     await _seeder(seed_database, report).seed_all()
