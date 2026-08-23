@@ -16,6 +16,7 @@ import json
 import logging
 from typing import Any
 
+from google.api_core.exceptions import FailedPrecondition
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from app.api.schemas.prompt import FewShotExampleCreate
@@ -172,11 +173,36 @@ class FeedbackService:
         if min_rating is not None:
             query = query.where(filter=FieldFilter("rating", ">=", min_rating))
 
-        query = query.order_by("rating", direction="DESCENDING")
         if offset:
             query = query.offset(offset)
 
-        items = [snapshot_to_dict(snapshot) async for snapshot in query.limit(limit + 1).stream()]
+        # Ordering needs a composite index (agent_id + rating), declared in
+        # firestore.indexes.json. If it is missing, Firestore fails the whole
+        # query with FailedPrecondition -- which is how a page that merely
+        # LISTS feedback returned 500 while the index sat undeployed.
+        #
+        # Degrade instead: fetch unordered and sort in process. Wrong at scale,
+        # which is why the index exists, but a listing that cannot be sorted
+        # should still list. Index builds take minutes and any new query shape
+        # reintroduces this, so the fallback is not a substitute for the index
+        # -- it is the difference between a slow page and a broken one.
+        try:
+            items = [
+                snapshot_to_dict(snapshot)
+                async for snapshot in query.order_by("rating", direction="DESCENDING")
+                .limit(limit + 1)
+                .stream()
+            ]
+        except FailedPrecondition:
+            logger.warning(
+                "run_feedback is missing its composite index; returning unordered results. "
+                "Deploy firestore.indexes.json.",
+                extra={"agent_id": agent_id},
+            )
+            rows = [snapshot_to_dict(snapshot) async for snapshot in query.stream()]
+            rows.sort(key=lambda r: r.get("rating") or 0, reverse=True)
+            items = rows[: limit + 1]
+
         return items[:limit], len(items) > limit
 
     async def candidate_examples(

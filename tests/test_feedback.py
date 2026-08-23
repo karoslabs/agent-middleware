@@ -281,3 +281,56 @@ def test_runs_can_be_listed_and_filtered_by_status(
     first_page = client.get(f"/agents/{agent['id']}/runs?limit=1").json()
     assert len(first_page["items"]) == 1
     assert first_page["has_more"] is True
+
+
+def test_feedback_listing_survives_a_missing_composite_index(
+    client: TestClient, monkeypatch: Any, agent: dict[str, Any], run: dict[str, Any]
+) -> None:
+    """A listing that cannot be ORDERED should still list.
+
+    The index for (agent_id, rating) is declared in firestore.indexes.json and
+    was never deployed, so Firestore failed the whole query with
+    FailedPrecondition and `GET /agents/{id}/feedback` returned 500 — taking
+    the Studio page down with it. The index is the fix; this is the guard that
+    stops the next undeployed index doing the same thing.
+    """
+    from google.api_core.exceptions import FailedPrecondition
+
+    from app.services import feedback as feedback_module
+
+    # Two verdicts, deliberately out of rating order, so the assertion below
+    # can only pass if something sorted them.
+    for rating in (2, 5):
+        created = client.post(
+            f"/agents/{agent['id']}/runs/{run['id']}/feedback",
+            json={"rating": rating, "status": "approved", "reviewer": "shlomi"},
+        )
+        assert created.status_code == 201, created.text
+
+    original = feedback_module.FeedbackService.list_for_agent
+
+    async def raise_once(self: Any, *args: Any, **kwargs: Any) -> Any:
+        # Force the ordered path to fail the way an absent index fails.
+        query_cls = type(self._db.collection("run_feedback"))
+        real_order_by = query_cls.order_by
+
+        def boom(*_a: Any, **_k: Any) -> Any:
+            raise FailedPrecondition("400 The query requires an index.")
+
+        query_cls.order_by = boom  # type: ignore[method-assign]
+        try:
+            return await original(self, *args, **kwargs)
+        finally:
+            query_cls.order_by = real_order_by  # type: ignore[method-assign]
+
+    monkeypatch.setattr(feedback_module.FeedbackService, "list_for_agent", raise_once)
+
+    response = client.get(f"/agents/{agent['id']}/feedback")
+
+    assert response.status_code == 200, response.text
+    # Proves the fallback actually ran rather than the test passing trivially:
+    # the ordered query was replaced by one that raises, so any ordering in the
+    # result can only have come from the in-process sort.
+    ratings = [item["rating"] for item in response.json()["items"]]
+    assert ratings == sorted(ratings, reverse=True)
+    assert ratings == [5, 2], "the fallback should have sorted these itself"
