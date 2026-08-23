@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.api.schemas.run import RunRead
 from app.core.enums import AgentStatus, TemplateKind
+from app.api.schemas.presentation import AgentStage
 
 JOB_PAYLOAD_SCHEMA_VERSION = 1
 
@@ -35,6 +36,12 @@ class AgentContextAgent(BaseModel):
     model_params: dict[str, Any]
     config: dict[str, Any]
     tags: list[str]
+    #: The agent's stages, carried so the dispatch can flatten any per-stage
+    #: model choices into the engine's `stageModels` map. Only the stages
+    #: matter here, not their labels -- but the whole list travels rather than
+    #: a pre-flattened map, so the payload stays a description of the agent
+    #: rather than of one derived view of it.
+    stages: list[AgentStage] = Field(default_factory=list)
 
 
 class AgentContextPrompt(BaseModel):

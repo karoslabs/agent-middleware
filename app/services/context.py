@@ -24,6 +24,7 @@ from app.db.firestore import utcnow
 from app.services.agents import AgentService
 from app.services.prompts import PromptService
 from app.services.templates import DEFAULT_PURPOSE, TemplateService
+from app.api.schemas.presentation import AgentStage
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class ContextService:
                 model_params=agent.get("model_params") or {},
                 config=agent.get("config") or {},
                 tags=agent.get("tags") or [],
+                stages=[AgentStage.model_validate(st) for st in (agent.get("stages") or [])],
             ),
             system_prompt=_to_context_prompt(prompt),
             few_shot_examples=[_to_context_example(example) for example in examples],

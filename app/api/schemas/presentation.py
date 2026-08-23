@@ -19,7 +19,7 @@ read-only because editing this list would change a page and not a program.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +37,20 @@ class AgentStage(BaseModel):
     #: A gate pauses for a human. Worth showing, because it is the difference
     #: between an agent that finishes on its own and one that waits.
     is_gate: bool = False
+    #: Which of the two kinds of step this is. Only ``"ai"`` stages call a
+    #: model, so only they can carry a ``model_id`` -- offering the picker on a
+    #: code step would be offering a setting that does nothing.
+    kind: Literal["ai", "code", "gate"] = "code"
+    #: A document id from the ``models`` collection, overriding whatever model
+    #: this stage is compiled to use. Null means "leave the stage alone".
+    #:
+    #: Settable even though ``stages_read_only`` is true for the hand-written
+    #: workflows, and the distinction is the point: the stage LIST is code and
+    #: editing it here would change a page and not a program, but which model a
+    #: stage runs on is configuration the engine reads per run. The engine
+    #: applies it through ``AgentContext.stageModels``, resolved at the one
+    #: place every agent step passes through.
+    model_id: str | None = Field(default=None, max_length=128)
 
 
 class AgentInputDef(BaseModel):

@@ -173,6 +173,17 @@ def to_engine_message(payload: JobPayload) -> dict[str, Any]:
     body["clientSlug"] = payload.client_slug
     body["productId"] = payload.product_id
     body["runKind"] = payload.run_kind
+    # Per-stage model selection, flattened to the {stepId: modelId} map the
+    # engine reads. Only stages that actually name a model appear: an empty or
+    # absent map means "every stage keeps its compiled default", which is what
+    # the engine already does when the key is missing entirely.
+    stage_models = {
+        stage.id: stage.model_id
+        for stage in payload.agent.stages
+        if stage.model_id
+    }
+    if stage_models:
+        body["stageModels"] = stage_models
     return body
 
 

@@ -14,8 +14,8 @@ from google.api_core.exceptions import AlreadyExists
 
 from app.api.schemas.agent import AgentCreate, AgentUpdate
 from app.core.enums import AgentStatus
-from app.core.exceptions import ResourceConflictError, ResourceNotFoundError
-from app.db.firestore import AGENTS, FirestoreDB, snapshot_to_dict, utcnow
+from app.core.exceptions import InvalidStateError, ResourceConflictError, ResourceNotFoundError
+from app.db.firestore import AGENTS, MODELS, FirestoreDB, snapshot_to_dict, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,35 @@ class AgentService:
         logger.info("Created agent %s", payload.slug)
         return {**document, "id": payload.slug}
 
+    async def _reject_unknown_stage_models(self, stages: list[dict[str, Any]] | None) -> None:
+        """Refuse a stage naming a model the catalog does not have.
+
+        The whole reason ``models`` is a collection rather than a free-text
+        field is that a stage used to be able to name a string nothing routes,
+        and nothing found out until a run failed at the model call -- by which
+        point the run is a `tooling_error` three layers from the typo. Checked
+        here, an unknown id is a 422 on the edit that introduced it.
+
+        A ``retired`` model is still accepted. Retirement exists so a stage that
+        already references a model can stop it being SELECTABLE without the
+        reference dangling; rejecting it here would break editing any other
+        field on an agent whose stage happens to point at one.
+        """
+        if not stages:
+            return
+        wanted = {s.get("model_id") for s in stages if s.get("model_id")}
+        if not wanted:
+            return
+        missing: list[str] = []
+        for model_id in sorted(str(m) for m in wanted):
+            snapshot = await self._db.document(MODELS, model_id).get()
+            if not snapshot.exists:
+                missing.append(model_id)
+        if missing:
+            raise InvalidStateError(
+                f"stage model(s) not in the models collection: {', '.join(missing)}"
+            )
+
     async def update(self, agent_ref: str, payload: AgentUpdate) -> dict[str, Any]:
         agent = await self.get(agent_ref)
 
@@ -62,6 +91,9 @@ class AgentService:
 
         if not patch:
             return agent
+
+        if "stages" in patch:
+            await self._reject_unknown_stage_models(patch["stages"])
 
         return await self._apply_patch(agent, patch)
 
