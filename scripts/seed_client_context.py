@@ -21,14 +21,28 @@ places the data actually lives:
   from one: an X handle, a client's frozen Instagram style config. Carried
   forward rather than regenerated.
 
-Nothing is invented. A client whose record has no industry gets no
-``industry`` key, not a guess. In particular this does NOT synthesise
+Nothing is invented on the default path. A client whose record has no industry
+gets no ``industry`` key, not a guess. In particular this does NOT synthesise
 ``instagramStyleConfig``/``instagramBrandTokens``: instagram-agent refuses to
 guess those and blocks the run instead, and a seeder that quietly invented
 them would defeat exactly the check that exists to stop unreviewed styling
 reaching a client's feed.
 
-Idempotent by content hash, so re-running writes nothing when unchanged.
+``--skeleton`` is the exception, and it is refused against production for that
+reason. It writes prep-only placeholders for everything an agent refuses to
+start without, plus one record that is not per-agent at all::
+
+    gs://<bucket>/clients/<slug>/topics/catalog.json
+
+the no-repeat topic catalog every channel agent reserves a subject from.
+NOTHING IN EITHER REPO EVER WRITES THAT FILE — ``topics.topUp`` has one
+production caller (``topics.reserve``'s own proactive top-up) and it passes an
+empty list — so it stays absent, reads as zero available rows, and every
+``topics.reserve`` call breaches the lane floor forever. See
+``skeleton_topics_catalog``.
+
+Idempotent by content hash for the ``client/*`` records, and create-only for
+the ``--skeleton`` extras: a record already present is never overwritten.
 """
 
 from __future__ import annotations
@@ -188,14 +202,121 @@ def skeleton_config(doc: dict[str, Any], slug: str) -> dict[str, Any]:
     }
 
 
-#: Two agents need more than `client/config.json`.
+#: ``LANE_FLOOR`` in agent-engine's ``packages/tools/karos-topics/src/reserve.ts``.
+#: ``topics.reserve`` refuses a reservation that would leave a lane below this,
+#: so a lane needs FLOOR + 1 rows to serve even one run.
+TOPIC_LANE_FLOOR = 5
+
+#: ``DEFAULT_CAROUSEL_LANE`` in instagram-agent's workflow, and ``DEFAULT_LANE``
+#: in karos-topics' catalog module. instagram-agent is the only caller that
+#: passes a lane at all; every other agent reads the catalog lane-agnostically,
+#: so rows seeded here serve all of them.
+TOPIC_DEFAULT_LANE = "general"
+
+#: Subject PROMPTS, not claims — each one names something to write about and
+#: asserts nothing about the client. That distinction is the whole reason this is
+#: seedable at all: a fabricated statistic or a made-up milestone would be the
+#: kind of invention this script refuses everywhere else, while "how {industry}
+#: teams evaluate new tooling" is a brief the drafting agent then has to research
+#: and source for itself.
+#:
+#: Two weeks of daily cadence plus the floor, which is what carousel-agent-v2's
+#: SKILL.md step 04 asks for ("at least two weeks of cadence per lane, floor 5
+#: unused rows per lane") and what makes the difference between a catalog that
+#: can serve runs and one that breaches on the first.
+TOPIC_SUBJECT_TEMPLATES: tuple[str, ...] = (
+    "what changed in {industry} this quarter",
+    "how {industry} teams evaluate new tooling",
+    "the most common {industry} onboarding mistake",
+    "what buyers ask before signing in {industry}",
+    "a workflow we would rebuild from scratch",
+    "the metric {industry} teams over-index on",
+    "why {industry} pilots stall after month one",
+    "what a good {industry} brief actually contains",
+    "the difference between busy and effective in {industry}",
+    "how to tell a real {industry} bottleneck from a symptom",
+    "what we look for when reviewing {industry} output",
+    "the case for fewer, better {industry} deliverables",
+    "what {industry} teams get wrong about automation",
+    "how we decide what not to build",
+    "the handoff that breaks most {industry} projects",
+    "questions worth asking before a {industry} rebuild",
+    "what a first {industry} engagement should cover",
+    "signals a {industry} process needs rethinking",
+    "how small teams compete in {industry}",
+    "what we changed after a {industry} project went sideways",
+)
+
+
+def skeleton_topics_catalog(doc: dict[str, Any], slug: str) -> list[dict[str, Any]]:
+    """A seeded ``topics/catalog.json`` so the no-repeat catalog can serve runs.
+
+    NOTHING IN EITHER REPO EVER POPULATES THIS FILE. ``topics.topUp`` — the one
+    tool that appends rows — has exactly one production caller, ``topics.reserve``
+    itself, and it calls it with an empty topics array: a proactive top-up that
+    is a documented no-op until an "invent evidenced candidates" capability
+    exists. So a client's catalog stays absent forever unless something writes
+    it, and an absent catalog reads as zero available rows.
+
+    That was survivable for the agents that treat a reserve ``content_fail`` as
+    "the catalog can't help this run" and fall through to a research-derived
+    subject. It was fatal for instagram-agent, which used to throw
+    ``WorkflowHeld`` on a breach — so on prep, where no catalog had ever been
+    written, every single instagram run died at step 03 with "topics catalog
+    floor breached". instagram-agent now falls back like its siblings, and this
+    seed removes the underlying gap rather than only its worst symptom: with a
+    real catalog the dedup gate is doing its actual job (no repeats across runs)
+    instead of being permanently bypassed.
+
+    Marked ``_placeholder`` PER ROW, because the catalog is a JSON array with no
+    envelope to hang one marker on. The engine reads only
+    ``topic``/``normalized``/``status``/``lane``/``reservationKey``, so the extra
+    key is inert, survives the read-modify-write ``topics.reserve`` does, and is
+    visible to anyone who opens the file.
+    """
+    industry = doc.get("industry") or "our industry"
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for template in TOPIC_SUBJECT_TEMPLATES:
+        topic = template.format(industry=industry)
+        normalized = topic.strip().lower()
+        # `topics.reserve` dedups on `normalized`; two templates collapsing onto
+        # one string after substitution would seed a row that can never be
+        # reserved separately.
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        rows.append(
+            {
+                "_placeholder": True,
+                "topic": topic.strip(),
+                "normalized": normalized,
+                "status": "available",
+                "lane": TOPIC_DEFAULT_LANE,
+            }
+        )
+    if len(rows) <= TOPIC_LANE_FLOOR:
+        # Never write a catalog that cannot serve a single reservation — that is
+        # indistinguishable from the empty-catalog state this exists to fix.
+        raise AssertionError(
+            f"{slug}: seeded topic catalog has {len(rows)} rows, at or below the "
+            f"floor of {TOPIC_LANE_FLOOR}; topics.reserve would breach immediately"
+        )
+    return rows
+
+
+#: Three agents need more than `client/config.json`, and one shared record does.
 #:
 #: landing-builder-agent reads an assembled input bundle (a brand contract plus
 #: an intake brief), and branded-shorts-agent refuses to run until Style
 #: Exploration has left a locked style in the client's memory shelf. Both are
 #: real onboarding outputs in production; in prep they are the difference
 #: between "every agent runs" and "nine of eleven do".
-def skeleton_extras(doc: dict[str, Any], slug: str) -> dict[str, tuple[str, dict[str, Any]]]:
+#:
+#: `topics/catalog` is the shared one — the no-repeat catalog every channel
+#: agent reserves from, and the one record NOTHING in either repo ever writes.
+#: See `skeleton_topics_catalog`.
+def skeleton_extras(doc: dict[str, Any], slug: str) -> dict[str, tuple[str, Any]]:
     guidelines = doc.get("brandingGuidelines") or {}
     name = doc.get("name") or slug
     accent = guidelines.get("primaryAccent") or doc.get("accentColor") or "#ff6b2c"
@@ -261,6 +382,14 @@ def skeleton_extras(doc: dict[str, Any], slug: str) -> dict[str, tuple[str, dict
                 # branded-shorts-agent gates on this key existing at all.
                 "brandedShortsLockedStyle": "prep-skeleton",
             },
+        ),
+        # A LIST, not a dict — the only extra with that shape, which is why this
+        # function's return type is `tuple[str, Any]`. See
+        # `skeleton_topics_catalog` for why the placeholder marker rides on each
+        # row instead of on an envelope.
+        "topics/catalog": (
+            f"clients/{slug}/topics/catalog.json",
+            skeleton_topics_catalog(doc, slug),
         ),
     }
 
@@ -360,6 +489,11 @@ def main() -> int:
             for label, (path, payload) in skeleton_extras(doc, slug).items():
                 blob = bucket.blob(path)
                 if blob.exists():
+                    # Never overwritten, only ever created. A topics catalog in
+                    # particular carries `reserved`/`committed` rows once runs
+                    # have used it — re-seeding it would resurrect topics the
+                    # client has already been posted about, which is the exact
+                    # thing the catalog exists to prevent.
                     report.record("skipped", f"{label} (already present)")
                     continue
                 if args.dry_run:
