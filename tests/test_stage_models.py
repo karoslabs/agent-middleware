@@ -28,7 +28,12 @@ def _stages(**overrides: Any) -> list[dict[str, Any]]:
 
 
 def test_stage_can_name_a_model_from_the_catalog(client: TestClient, agent: dict[str, Any]) -> None:
-    make_model(client, model_id="claude-haiku-4-5", display_name="Claude Haiku 4.5", provider_model_name="claude-haiku-4-5@20251001")
+    make_model(
+        client,
+        model_id="claude-haiku-4-5",
+        display_name="Claude Haiku 4.5",
+        provider_model_name="claude-haiku-4-5@20251001",
+    )
 
     response = client.patch(
         f"/agents/{agent['id']}",
@@ -41,7 +46,9 @@ def test_stage_can_name_a_model_from_the_catalog(client: TestClient, agent: dict
     assert stages["02-verify"]["model_id"] is None
 
 
-def test_a_stage_naming_an_unknown_model_is_refused(client: TestClient, agent: dict[str, Any]) -> None:
+def test_a_stage_naming_an_unknown_model_is_refused(
+    client: TestClient, agent: dict[str, Any]
+) -> None:
     # The reason `models` is a collection rather than free text. Caught on the
     # edit that introduced the typo, not as a tooling_error three layers away
     # at the model call.
@@ -70,7 +77,12 @@ def test_dispatch_carries_only_the_stages_that_named_a_model(
     template: dict[str, Any],
     fake_publisher_client: FakePublisherClient,
 ) -> None:
-    make_model(client, model_id="claude-haiku-4-5", display_name="Claude Haiku 4.5", provider_model_name="claude-haiku-4-5@20251001")
+    make_model(
+        client,
+        model_id="claude-haiku-4-5",
+        display_name="Claude Haiku 4.5",
+        provider_model_name="claude-haiku-4-5@20251001",
+    )
     client.put(f"/agents/{agent['id']}/templates/primary", json={"template_ref": template["id"]})
     client.patch(
         f"/agents/{agent['id']}",

@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass, field
+from typing import Any
 
 ENVIRONMENTS: dict[str, str] = {
     "prep": "karoscmo-prep-agent-artifacts",
@@ -61,9 +62,13 @@ class Requirement:
 
 #: Records projected from the portal by ``seed_client_context.py`` (no
 #: ``--skeleton``). These are real data and every production client has them.
-PROFILE = Requirement("client/profile", supplied_by="seed_client_context.py (from the portal record)")
+PROFILE = Requirement(
+    "client/profile", supplied_by="seed_client_context.py (from the portal record)"
+)
 BRAND = Requirement("client/brand", supplied_by="seed_client_context.py (from the portal record)")
-VOICE = Requirement("client/voice-rules", supplied_by="seed_client_context.py (from the portal record)")
+VOICE = Requirement(
+    "client/voice-rules", supplied_by="seed_client_context.py (from the portal record)"
+)
 
 #: The forward pipeline every channel agent reserves a subject from. Nothing in
 #: either repository writes it (``topics.topUp``'s one production caller passes
@@ -73,10 +78,15 @@ VOICE = Requirement("client/voice-rules", supplied_by="seed_client_context.py (f
 #: through to a research-derived candidate instead (each says so in its own
 #: comment at the reserve call). The distinction is the difference between
 #: "produces nothing" and "produces without the no-repeat guarantee".
-TOPICS = Requirement("topics/catalog", supplied_by="NOTHING WRITES THIS YET -- see seed_client_context.py's own note")
+TOPICS = Requirement(
+    "topics/catalog", supplied_by="NOTHING WRITES THIS YET -- see seed_client_context.py's own note"
+)
 TOPICS_SOFT = Requirement(
     "topics/catalog",
-    supplied_by="NOTHING WRITES THIS YET -- this agent falls through to a research-derived candidate, so it runs WITHOUT the no-repeat guarantee",
+    supplied_by=(
+        "NOTHING WRITES THIS YET -- this agent falls through to a research-derived "
+        "candidate, so it runs WITHOUT the no-repeat guarantee"
+    ),
     soft=True,
 )
 
@@ -94,18 +104,81 @@ ONBOARDING = "the one-time per-client onboarding workflow for this product"
 #: guessed -- the `client.*` calls and `WorkflowBlockedIntake` messages in
 #: `agents/<name>/src/workflow/`.
 AGENT_REQUIREMENTS: dict[str, tuple[Requirement, ...]] = {
-    "x-agent": (PROFILE, BRAND, VOICE, cfg("xHandle", supplied_by=HUMAN_DECISION), Requirement("strategy/x-agent", supplied_by=SETUP_AGENT), TOPICS_SOFT),
-    "linkedin-agent": (PROFILE, BRAND, VOICE, Requirement("strategy/linkedin-agent", supplied_by="linkedin-setup-agent"), TOPICS_SOFT),
-    "reddit-agent": (PROFILE, BRAND, VOICE, cfg("targetSubreddits", supplied_by="reddit-setup-agent"), TOPICS_SOFT),
-    "blog-agent": (PROFILE, BRAND, VOICE, cfg("contentPillars", "targetKeywords", supplied_by="a person: the editorial plan, not a restatement of the industry field"), TOPICS_SOFT),
-    "newsletter-agent": (PROFILE, BRAND, VOICE, cfg("targetAudience", "frequency", supplied_by="a person: the editorial plan"), TOPICS_SOFT),
-    "instagram-agent": (PROFILE, cfg("instagramStyleConfig", "instagramBrandTokens", supplied_by=ONBOARDING + " -- instagram-agent refuses to guess styling and blocks instead"), TOPICS),
+    "x-agent": (
+        PROFILE,
+        BRAND,
+        VOICE,
+        cfg("xHandle", supplied_by=HUMAN_DECISION),
+        Requirement("strategy/x-agent", supplied_by=SETUP_AGENT),
+        TOPICS_SOFT,
+    ),
+    "linkedin-agent": (
+        PROFILE,
+        BRAND,
+        VOICE,
+        Requirement("strategy/linkedin-agent", supplied_by="linkedin-setup-agent"),
+        TOPICS_SOFT,
+    ),
+    "reddit-agent": (
+        PROFILE,
+        BRAND,
+        VOICE,
+        cfg("targetSubreddits", supplied_by="reddit-setup-agent"),
+        TOPICS_SOFT,
+    ),
+    "blog-agent": (
+        PROFILE,
+        BRAND,
+        VOICE,
+        cfg(
+            "contentPillars",
+            "targetKeywords",
+            supplied_by="a person: the editorial plan, not a restatement of the industry field",
+        ),
+        TOPICS_SOFT,
+    ),
+    "newsletter-agent": (
+        PROFILE,
+        BRAND,
+        VOICE,
+        cfg("targetAudience", "frequency", supplied_by="a person: the editorial plan"),
+        TOPICS_SOFT,
+    ),
+    "instagram-agent": (
+        PROFILE,
+        cfg(
+            "instagramStyleConfig",
+            "instagramBrandTokens",
+            supplied_by=ONBOARDING
+            + " -- instagram-agent refuses to guess styling and blocks instead",
+        ),
+        TOPICS,
+    ),
     "reputation-agent": (PROFILE, BRAND, VOICE),
     "seo-geo-agent": (PROFILE, BRAND),
     "intel-report-agent": (PROFILE, BRAND),
-    "landing-builder-agent": (Requirement("landing/brand", supplied_by=ONBOARDING), Requirement("landing/intake", supplied_by=ONBOARDING)),
-    "branded-shorts-agent": (BRAND, cfg("brandedShortsProfilePath", "brandedShortsGraphicsLanguage", "brandedShortsApprovedArchetypes", supplied_by="the Style Exploration onboarding workflow")),
-    "tiktok-agent": (BRAND, VOICE, cfg("tiktokClips", supplied_by=HUMAN_DECISION + " (which shows this client holds the rights to clip)"), TOPICS),
+    "landing-builder-agent": (
+        Requirement("landing/brand", supplied_by=ONBOARDING),
+        Requirement("landing/intake", supplied_by=ONBOARDING),
+    ),
+    "branded-shorts-agent": (
+        BRAND,
+        cfg(
+            "brandedShortsProfilePath",
+            "brandedShortsGraphicsLanguage",
+            "brandedShortsApprovedArchetypes",
+            supplied_by="the Style Exploration onboarding workflow",
+        ),
+    ),
+    "tiktok-agent": (
+        BRAND,
+        VOICE,
+        cfg(
+            "tiktokClips",
+            supplied_by=HUMAN_DECISION + " (which shows this client holds the rights to clip)",
+        ),
+        TOPICS,
+    ),
     "linkedin-setup-agent": (),
     "reddit-setup-agent": (),
 }
@@ -119,7 +192,7 @@ class ClientState:
     placeholder: bool = False
 
 
-def load_client(storage, bucket_name: str, slug: str) -> ClientState:
+def load_client(storage: Any, bucket_name: str, slug: str) -> ClientState:
     import json
 
     bucket = storage.bucket(bucket_name)
@@ -145,7 +218,9 @@ def gaps_for(state: ClientState, agent: str) -> tuple[list[str], list[str]]:
         if req.path == "client/config":
             missing = [k for k in req.keys if not state.config.get(k)]
             if missing:
-                (soft if req.soft else out).append(f"client/config: {', '.join(missing)}  <- {req.supplied_by}")
+                (soft if req.soft else out).append(
+                    f"client/config: {', '.join(missing)}  <- {req.supplied_by}"
+                )
             continue
         # A strategy requirement is met by ANY document under that prefix: an
         # agent-level charter and a per-seat one both count.
@@ -159,7 +234,9 @@ def gaps_for(state: ClientState, agent: str) -> tuple[list[str], list[str]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--env", choices=sorted(ENVIRONMENTS), required=True)
     parser.add_argument("--client", action="append", help="Restrict to one slug; repeatable.")
     parser.add_argument("--agent", action="append", help="Restrict to one product id; repeatable.")
@@ -171,10 +248,15 @@ def main() -> int:
         sys.exit("google-cloud-firestore and google-cloud-storage must be installed")
 
     bucket_name = ENVIRONMENTS[args.env]
-    db = firestore.Client(project="karoscmo", database="prep" if args.env == "prep" else "(default)")
-    slugs = args.client or sorted(
-        slug for slug in (d.to_dict().get("agentsRepoSlug") for d in db.collection("clients").stream()) if slug
+    db = firestore.Client(
+        project="karoscmo", database="prep" if args.env == "prep" else "(default)"
     )
+    discovered: list[str] = []
+    for snapshot in db.collection("clients").stream():
+        record = snapshot.to_dict()
+        if record and record.get("agentsRepoSlug"):
+            discovered.append(str(record["agentsRepoSlug"]))
+    slugs = args.client or sorted(discovered)
     agents = args.agent or sorted(AGENT_REQUIREMENTS)
 
     client = storage.Client()

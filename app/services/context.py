@@ -18,13 +18,13 @@ from app.api.schemas.context import (
     AgentContextPrompt,
     AgentContextTemplate,
 )
+from app.api.schemas.presentation import AgentStage
 from app.config import Settings
 from app.core.exceptions import IncompleteAgentConfigurationError
 from app.db.firestore import utcnow
 from app.services.agents import AgentService
 from app.services.prompts import PromptService
 from app.services.templates import DEFAULT_PURPOSE, TemplateService
-from app.api.schemas.presentation import AgentStage
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +73,7 @@ class ContextService:
             if max_examples is not None
             else self._settings.default_context_example_limit
         )
-        examples = (
-            await self._prompts.context_examples(agent_id, limit) if include_examples else []
-        )
+        examples = await self._prompts.context_examples(agent_id, limit) if include_examples else []
         resolved_template = await self._templates.resolve_for_agent(
             agent_id, purpose=purpose, template_ref=template_ref
         )

@@ -13,9 +13,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.api.schemas.presentation import AgentStage
 from app.api.schemas.run import RunRead
 from app.core.enums import AgentStatus, TemplateKind
-from app.api.schemas.presentation import AgentStage
 
 JOB_PAYLOAD_SCHEMA_VERSION = 1
 
@@ -136,9 +136,7 @@ class DispatchRequest(BaseModel):
             "whole workspace from it, and there is no safe default."
         ),
     )
-    run_kind: RunKind = Field(
-        default="recurring", description="'setup' for a client's first build"
-    )
+    run_kind: RunKind = Field(default="recurring", description="'setup' for a client's first build")
     run_id: str | None = Field(
         default=None, max_length=64, description="Caller-owned run id; generated when omitted"
     )

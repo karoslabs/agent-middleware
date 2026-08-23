@@ -52,21 +52,72 @@ ENVIRONMENTS: dict[str, dict[str, str]] = {
 #: below trips the assertion instead of shipping.
 FORBIDDEN_KEYS: dict[str, str] = {
     "xHandle": "an X account nobody verified belongs to this client",
-    "targetSubreddits": "communities nobody vetted, on a product where a human posts the reply from their own account",
-    "instagramStyleConfig": "unreviewed styling reaching a client's feed -- instagram-agent refuses to guess it for this reason",
+    "targetSubreddits": (
+        "communities nobody vetted, on a product where a human posts the reply "
+        "from their own account"
+    ),
+    "instagramStyleConfig": (
+        "unreviewed styling reaching a client's feed -- instagram-agent refuses "
+        "to guess it for this reason"
+    ),
     "instagramBrandTokens": "same as instagramStyleConfig",
-    "brandedShortsProfilePath": "a locked brand style that only the Style Exploration onboarding produces",
+    "brandedShortsProfilePath": (
+        "a locked brand style that only the Style Exploration onboarding produces"
+    ),
     "brandedShortsGraphicsLanguage": "same as brandedShortsProfilePath",
     "brandedShortsApprovedArchetypes": "an approved repertoire, not a default",
     "tiktokClips": "which shows a client holds the rights to clip",
 }
 
 STOPWORDS = {
-    "the", "and", "for", "with", "that", "this", "their", "from", "your", "you",
-    "are", "was", "were", "who", "what", "into", "they", "them", "its", "it's",
-    "our", "not", "but", "all", "can", "has", "have", "had", "will", "would",
-    "more", "most", "than", "then", "when", "where", "how", "why", "about",
-    "over", "under", "just", "like", "also", "very", "much", "some", "any",
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "their",
+    "from",
+    "your",
+    "you",
+    "are",
+    "was",
+    "were",
+    "who",
+    "what",
+    "into",
+    "they",
+    "them",
+    "its",
+    "it's",
+    "our",
+    "not",
+    "but",
+    "all",
+    "can",
+    "has",
+    "have",
+    "had",
+    "will",
+    "would",
+    "more",
+    "most",
+    "than",
+    "then",
+    "when",
+    "where",
+    "how",
+    "why",
+    "about",
+    "over",
+    "under",
+    "just",
+    "like",
+    "also",
+    "very",
+    "much",
+    "some",
+    "any",
 }
 
 
@@ -83,7 +134,10 @@ def keywords_from(record: dict[str, Any], limit: int = 8) -> list[str]:
     themselves, and a cleverer extraction would be harder to audit for exactly
     the property that matters.
     """
-    text = " ".join(str(record.get(k) or "") for k in ("description", "industry", "brandVoice", "brandingGuidelines"))
+    text = " ".join(
+        str(record.get(k) or "")
+        for k in ("description", "industry", "brandVoice", "brandingGuidelines")
+    )
     counts: dict[str, int] = {}
     for word in _words(text):
         key = word.lower()
@@ -150,16 +204,24 @@ def editorial_config(record: dict[str, Any]) -> dict[str, Any]:
         out["targetAudience"] = f"Readers and buyers in {industry}"
     out["frequency"] = "weekly"
     for key in out:
-        assert key not in FORBIDDEN_KEYS, f"{key} is on the forbidden list and must never be derived"
+        assert key not in FORBIDDEN_KEYS, (
+            f"{key} is on the forbidden list and must never be derived"
+        )
     return out
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--env", choices=sorted(ENVIRONMENTS), required=True)
     parser.add_argument("--client", action="append", help="Restrict to one slug; repeatable.")
-    parser.add_argument("--confirm", action="store_true", help="Required to write. Without it this is a dry run.")
-    parser.add_argument("--timestamp", required=True, help="Recorded as _derivedAt, e.g. 2026-08-23T20:00Z")
+    parser.add_argument(
+        "--confirm", action="store_true", help="Required to write. Without it this is a dry run."
+    )
+    parser.add_argument(
+        "--timestamp", required=True, help="Recorded as _derivedAt, e.g. 2026-08-23T20:00Z"
+    )
     args = parser.parse_args()
 
     try:
@@ -171,9 +233,14 @@ def main() -> int:
     db = firestore.Client(project="karoscmo", database=env["database"])
     bucket = storage.Client().bucket(env["bucket"])
 
-    records = {
-        (d.to_dict().get("agentsRepoSlug") or ""): d.to_dict() for d in db.collection("clients").stream()
-    }
+    # `to_dict()` is Optional on a snapshot that vanished mid-stream. Read once
+    # and skip the empty ones rather than calling it twice and trusting both.
+    records: dict[str, dict[str, Any]] = {}
+    for snapshot in db.collection("clients").stream():
+        record = snapshot.to_dict()
+        if not record:
+            continue
+        records[str(record.get("agentsRepoSlug") or "")] = record
     slugs = args.client or sorted(s for s in records if s)
 
     print(f"Editorial seeding — {args.env} (gs://{env['bucket']})")
@@ -187,7 +254,11 @@ def main() -> int:
 
         derived = editorial_config(record)
         provenance = {
-            "_derivedFrom": sorted(k for k in ("description", "industry", "brandVoice", "brandingGuidelines") if record.get(k)),
+            "_derivedFrom": sorted(
+                k
+                for k in ("description", "industry", "brandVoice", "brandingGuidelines")
+                if record.get(k)
+            ),
             "_derivedAt": args.timestamp,
         }
         config_blob = bucket.blob(f"clients/{slug}/client/config.json")
@@ -207,7 +278,10 @@ def main() -> int:
         writable = {k: v for k, v in derived.items() if k not in human_owned}
 
         print(f"  {slug}")
-        print(f"    config keys : {sorted(writable) or 'none'}" + (f"  (kept human-set: {human_owned})" if human_owned else ""))
+        print(
+            f"    config keys : {sorted(writable) or 'none'}"
+            + (f"  (kept human-set: {human_owned})" if human_owned else "")
+        )
         still_blocked = sorted(FORBIDDEN_KEYS)
         print(f"    STILL NEEDS A PERSON: {', '.join(still_blocked)}")
 
