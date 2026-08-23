@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.api.schemas.common import SlugStr
+from app.api.schemas.presentation import AgentInputDef, AgentStage
 from app.core.enums import AgentStatus
 
 
@@ -23,6 +24,21 @@ class AgentCreate(BaseModel):
     model_params: dict[str, Any] = Field(default_factory=dict)
     config: dict[str, Any] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
+    # --- catalog / Studio presentation -------------------------------------
+    # First-class rather than keys in `config`: config is opaque to this
+    # service and passed through to the engine, so it is a private arrangement
+    # between an agent and its workflow. What the catalog renders is a public
+    # contract, and a schema is how a contract gets enforced.
+    icon: str | None = Field(default=None, max_length=64)
+    category: str | None = Field(default=None, max_length=64)
+    #: Null means "platform default", not "free" — zero would be a decision.
+    credit_cost: int | None = Field(default=None, ge=0)
+    is_public: bool = True
+    required_inputs: list[AgentInputDef] = Field(default_factory=list)
+    stages: list[AgentStage] = Field(default_factory=list)
+    #: True when `stages` describes compiled code, which is the case for every
+    #: hand-written agent-engine workflow.
+    stages_read_only: bool = True
 
 
 class AgentUpdate(BaseModel):
@@ -36,6 +52,13 @@ class AgentUpdate(BaseModel):
     model_params: dict[str, Any] | None = None
     config: dict[str, Any] | None = None
     tags: list[str] | None = None
+    icon: str | None = Field(default=None, max_length=64)
+    category: str | None = Field(default=None, max_length=64)
+    credit_cost: int | None = Field(default=None, ge=0)
+    is_public: bool | None = None
+    required_inputs: list[AgentInputDef] | None = None
+    stages: list[AgentStage] | None = None
+    stages_read_only: bool | None = None
 
 
 class AgentStatusUpdate(BaseModel):
@@ -57,6 +80,13 @@ class AgentRead(BaseModel):
     model_params: dict[str, Any]
     config: dict[str, Any]
     tags: list[str]
+    icon: str | None = None
+    category: str | None = None
+    credit_cost: int | None = None
+    is_public: bool = True
+    required_inputs: list[AgentInputDef] = Field(default_factory=list)
+    stages: list[AgentStage] = Field(default_factory=list)
+    stages_read_only: bool = True
     deleted_at: datetime | None
     created_at: datetime
     updated_at: datetime
