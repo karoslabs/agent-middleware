@@ -1,784 +1,854 @@
 {
- "instagram-agent": [
-  {
-   "id": "01-open-run",
-   "kind": "code"
-  },
-  {
-   "id": "02-freeze-style-config",
-   "kind": "code"
-  },
-  {
-   "id": "03-claim-topic",
-   "kind": "code"
-  },
-  {
-   "id": "04a-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "04b-research-extract-facts",
-   "kind": "agent"
-  },
-  {
-   "id": "05a-list-used-images",
-   "kind": "code"
-  },
-  {
-   "id": "05-write-copy",
-   "kind": "agent"
-  },
-  {
-   "id": "05b-source-images",
-   "kind": "code"
-  },
-  {
-   "id": "06-vet-images",
-   "kind": "agent"
-  },
-  {
-   "id": "07-self-check",
-   "kind": "code"
-  },
-  {
-   "id": "07b-craft-hygiene",
-   "kind": "code"
-  },
-  {
-   "id": "07c-emit-slides-data",
-   "kind": "code"
-  },
-  {
-   "id": "08-render-carousel",
-   "kind": "code"
-  },
-  {
-   "id": "08b-visual-qa",
-   "kind": "agent"
-  },
-  {
-   "id": "09a-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "09b-deliver-and-log",
-   "kind": "code"
-  }
- ],
- "landing-builder-agent": [
-  {
-   "id": "00-intake",
-   "kind": "code"
-  },
-  {
-   "id": "01-reference",
-   "kind": "code"
-  },
-  {
-   "id": "02-copy",
-   "kind": "agent"
-  },
-  {
-   "id": "03-compose",
-   "kind": "agent"
-  },
-  {
-   "id": "02-copy-rebuild",
-   "kind": "agent"
-  },
-  {
-   "id": "04a-copy-template",
-   "kind": "code"
-  },
-  {
-   "id": "04b-write-generated-files",
-   "kind": "code"
-  },
-  {
-   "id": "05a-gate-deterministic",
-   "kind": "code"
-  },
-  {
-   "id": "05b-gate-fix-and-recheck",
-   "kind": "code"
-  },
-  {
-   "id": "06-render-check",
-   "kind": "code"
-  },
-  {
-   "id": "07-craft-verdict",
-   "kind": "agent"
-  },
-  {
-   "id": "07b-stage-site-bundle",
-   "kind": "code"
-  },
-  {
-   "id": "08-human-review",
-   "kind": "code"
-  },
-  {
-   "id": "08a-restore-site-bundle",
-   "kind": "code"
-  },
-  {
-   "id": "09a-persist-feedback-round",
-   "kind": "code"
-  },
-  {
-   "id": "09b-upload-site-bundle",
-   "kind": "code"
-  },
-  {
-   "id": "09c-persist-deliverable",
-   "kind": "code"
-  }
- ],
- "x-agent": [
-  {
-   "id": "00-intake-check",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "02-load-memory-shelf",
-   "kind": "code"
-  },
-  {
-   "id": "03-load-recent-decisions",
-   "kind": "code"
-  },
-  {
-   "id": "04-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "05-extract-candidate-summary",
-   "kind": "code"
-  },
-  {
-   "id": "06-reserve-topic",
-   "kind": "code"
-  },
-  {
-   "id": "07-select-candidate",
-   "kind": "code"
-  },
-  {
-   "id": "08-select-lane",
-   "kind": "code"
-  },
-  {
-   "id": "09-check-engagement-cap",
-   "kind": "code"
-  },
-  {
-   "id": "10-draft-post",
-   "kind": "agent"
-  },
-  {
-   "id": "11-verify-numbers-sourced",
-   "kind": "code"
-  },
-  {
-   "id": "12-verify-brand-compliance",
-   "kind": "code"
-  },
-  {
-   "id": "13-verify-link-placement",
-   "kind": "code"
-  },
-  {
-   "id": "14-render-preview-check",
-   "kind": "code"
-  },
-  {
-   "id": "15-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "16-verify-no-placeholder",
-   "kind": "code"
-  },
-  {
-   "id": "17-verify-no-leak",
-   "kind": "code"
-  },
-  {
-   "id": "18-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "19-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "20-commit-and-record",
-   "kind": "code"
-  }
- ],
- "linkedin-agent": [
-  {
-   "id": "00-intake-check",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "02-load-memory-shelf",
-   "kind": "code"
-  },
-  {
-   "id": "03-load-recent-decisions",
-   "kind": "code"
-  },
-  {
-   "id": "04-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "05-extract-candidate-summary",
-   "kind": "code"
-  },
-  {
-   "id": "06-reserve-topic",
-   "kind": "code"
-  },
-  {
-   "id": "07-select-candidate",
-   "kind": "code"
-  },
-  {
-   "id": "08-determine-archetype",
-   "kind": "code"
-  },
-  {
-   "id": "09-draft-post",
-   "kind": "agent"
-  },
-  {
-   "id": "10-verify-numbers-sourced",
-   "kind": "code"
-  },
-  {
-   "id": "11-verify-brand-compliance",
-   "kind": "code"
-  },
-  {
-   "id": "12-render-preview-check",
-   "kind": "code"
-  },
-  {
-   "id": "13-verify-no-placeholder",
-   "kind": "code"
-  },
-  {
-   "id": "14-verify-no-leak",
-   "kind": "code"
-  },
-  {
-   "id": "15-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "16-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "17-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "18-commit-and-record",
-   "kind": "code"
-  }
- ],
- "reddit-agent": [
-  {
-   "id": "00-intake-check",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "02-load-memory-shelf",
-   "kind": "code"
-  },
-  {
-   "id": "03-load-recent-decisions",
-   "kind": "code"
-  },
-  {
-   "id": "04-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "05-extract-candidate-summary",
-   "kind": "code"
-  },
-  {
-   "id": "06-reserve-topic",
-   "kind": "code"
-  },
-  {
-   "id": "07-select-candidate",
-   "kind": "code"
-  },
-  {
-   "id": "08-select-target-thread",
-   "kind": "code"
-  },
-  {
-   "id": "09-check-thread-not-answered",
-   "kind": "code"
-  },
-  {
-   "id": "10-verify-subreddit-eligibility",
-   "kind": "code"
-  },
-  {
-   "id": "11-determine-angle",
-   "kind": "code"
-  },
-  {
-   "id": "12-draft-reply",
-   "kind": "agent"
-  },
-  {
-   "id": "13-verify-numbers-sourced",
-   "kind": "code"
-  },
-  {
-   "id": "14-verify-brand-compliance",
-   "kind": "code"
-  },
-  {
-   "id": "15-verify-no-placeholder",
-   "kind": "code"
-  },
-  {
-   "id": "16-verify-leak-check",
-   "kind": "code"
-  },
-  {
-   "id": "17-render-preview-check",
-   "kind": "code"
-  },
-  {
-   "id": "18-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "19-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "20-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "21-commit-and-record",
-   "kind": "code"
-  }
- ],
- "branded-shorts-agent": [
-  {
-   "id": "00-brand-resolve",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-intake",
-   "kind": "code"
-  },
-  {
-   "id": "02-load-brand-profile",
-   "kind": "code"
-  },
-  {
-   "id": "03-transcribe",
-   "kind": "code"
-  },
-  {
-   "id": "04-plan-cut",
-   "kind": "code"
-  },
-  {
-   "id": "05-cut-gate",
-   "kind": "code"
-  },
-  {
-   "id": "06-highlights",
-   "kind": "agent"
-  },
-  {
-   "id": "07-color-grade",
-   "kind": "code"
-  },
-  {
-   "id": "08a-plan-graphics",
-   "kind": "agent"
-  },
-  {
-   "id": "08a2-validate-archetypes",
-   "kind": "code"
-  },
-  {
-   "id": "08b-render-and-gate",
-   "kind": "code"
-  },
-  {
-   "id": "09-self-eval-gate",
-   "kind": "code"
-  },
-  {
-   "id": "10-delivery-review",
-   "kind": "code"
-  },
-  {
-   "id": "10a-upload-to-gcs",
-   "kind": "code"
-  },
-  {
-   "id": "11-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "12-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "13-commit-and-record",
-   "kind": "code"
-  }
- ],
- "intel-report-agent": [
-  {
-   "id": "00-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "01-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "02-generate-report",
-   "kind": "agent"
-  },
-  {
-   "id": "03-verify-numbers-sourced",
-   "kind": "code"
-  },
-  {
-   "id": "04-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "05-persist-report",
-   "kind": "code"
-  },
-  {
-   "id": "06-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "07-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "08-record-feedback",
-   "kind": "code"
-  }
- ],
- "blog-agent": [
-  {
-   "id": "00-intake-check",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "02-load-memory-shelf",
-   "kind": "code"
-  },
-  {
-   "id": "03-load-recent-decisions",
-   "kind": "code"
-  },
-  {
-   "id": "04-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "05-extract-candidate-summary",
-   "kind": "code"
-  },
-  {
-   "id": "06-reserve-topic",
-   "kind": "code"
-  },
-  {
-   "id": "07-select-candidate",
-   "kind": "code"
-  },
-  {
-   "id": "08-determine-angle",
-   "kind": "code"
-  },
-  {
-   "id": "09-draft-post",
-   "kind": "agent"
-  },
-  {
-   "id": "10-verify-numbers-sourced",
-   "kind": "code"
-  },
-  {
-   "id": "11-verify-brand-compliance",
-   "kind": "code"
-  },
-  {
-   "id": "12-render-preview-check",
-   "kind": "code"
-  },
-  {
-   "id": "13-verify-no-placeholder",
-   "kind": "code"
-  },
-  {
-   "id": "14-verify-no-leak",
-   "kind": "code"
-  },
-  {
-   "id": "15-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "16-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "17-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "18-commit-and-record",
-   "kind": "code"
-  }
- ],
- "newsletter-agent": [
-  {
-   "id": "00-intake-check",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "02-load-memory-shelf",
-   "kind": "code"
-  },
-  {
-   "id": "03-load-recent-decisions",
-   "kind": "code"
-  },
-  {
-   "id": "04-research-pull",
-   "kind": "code"
-  },
-  {
-   "id": "05-extract-candidate-summary",
-   "kind": "code"
-  },
-  {
-   "id": "06-reserve-topics",
-   "kind": "code"
-  },
-  {
-   "id": "07-select-candidates",
-   "kind": "code"
-  },
-  {
-   "id": "08-determine-edition-theme",
-   "kind": "code"
-  },
-  {
-   "id": "09-draft-post",
-   "kind": "agent"
-  },
-  {
-   "id": "10-verify-brand-compliance",
-   "kind": "code"
-  },
-  {
-   "id": "11-verify-numbers-sourced",
-   "kind": "code"
-  },
-  {
-   "id": "12-verify-compliance-footer",
-   "kind": "code"
-  },
-  {
-   "id": "13-verify-no-placeholder",
-   "kind": "code"
-  },
-  {
-   "id": "14-verify-no-leak",
-   "kind": "code"
-  },
-  {
-   "id": "15-render-preview-check",
-   "kind": "code"
-  },
-  {
-   "id": "16-batch-review",
-   "kind": "code"
-  },
-  {
-   "id": "17-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "18-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "19-commit-and-record",
-   "kind": "code"
-  }
- ],
- "reputation-agent": [
-  {
-   "id": "layer0-capture",
-   "kind": "code"
-  },
-  {
-   "id": "layer1-response-behavior-mining",
-   "kind": "code"
-  },
-  {
-   "id": "layer2-reputation-state",
-   "kind": "code"
-  },
-  {
-   "id": "layer3-theme-mining",
-   "kind": "code"
-  },
-  {
-   "id": "layer4-competitor-benchmark",
-   "kind": "code"
-  },
-  {
-   "id": "layer5-synthesis",
-   "kind": "code"
-  }
- ],
- "seo-geo-agent": [
-  {
-   "id": "00-intake-check",
-   "kind": "code"
-  },
-  {
-   "id": "01-load-client-context",
-   "kind": "code"
-  },
-  {
-   "id": "02-draft-prompt-set",
-   "kind": "code"
-  },
-  {
-   "id": "03-prompt-set-review",
-   "kind": "code"
-  },
-  {
-   "id": "04-freeze-prompt-set",
-   "kind": "code"
-  },
-  {
-   "id": "06-derive-technical-measurements",
-   "kind": "code"
-  },
-  {
-   "id": "08-assemble-visibility-cells",
-   "kind": "code"
-  },
-  {
-   "id": "09-compute-scores",
-   "kind": "code"
-  },
-  {
-   "id": "10-connector-overlay",
-   "kind": "code"
-  },
-  {
-   "id": "11-fire-recommendations",
-   "kind": "code"
-  },
-  {
-   "id": "12-fix-generation-review",
-   "kind": "code"
-  },
-  {
-   "id": "13-draft-fixes",
-   "kind": "agent"
-  },
-  {
-   "id": "14-draft-narrative",
-   "kind": "agent"
-  },
-  {
-   "id": "15-verify-narrative-numbers",
-   "kind": "code"
-  },
-  {
-   "id": "16-assemble-report",
-   "kind": "code"
-  },
-  {
-   "id": "17-persist-deliverable",
-   "kind": "code"
-  },
-  {
-   "id": "18-persist-manifest",
-   "kind": "code"
-  },
-  {
-   "id": "19-commit-and-record",
-   "kind": "code"
-  }
- ],
- "linkedin-setup-agent": [
-  {
-   "id": "00-parse-intake",
-   "kind": "code"
-  },
-  {
-   "id": "01-save-company-direction",
-   "kind": "code"
-  },
-  {
-   "id": "02-save-seat",
-   "kind": "code"
-  }
- ],
- "reddit-setup-agent": [
-  {
-   "id": "00-parse-intake",
-   "kind": "code"
-  },
-  {
-   "id": "01-save-reddit-config",
-   "kind": "code"
-  }
- ]
+  "blog-agent": [
+    {
+      "id": "00-intake-check",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "02-load-memory-shelf",
+      "kind": "code"
+    },
+    {
+      "id": "03-load-recent-decisions",
+      "kind": "code"
+    },
+    {
+      "id": "04-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "05-extract-candidate-summary",
+      "kind": "code"
+    },
+    {
+      "id": "06-reserve-topic",
+      "kind": "code"
+    },
+    {
+      "id": "07-select-candidate",
+      "kind": "code"
+    },
+    {
+      "id": "08-determine-angle",
+      "kind": "code"
+    },
+    {
+      "id": "09-draft-post",
+      "kind": "agent"
+    },
+    {
+      "id": "10-verify-numbers-sourced",
+      "kind": "code"
+    },
+    {
+      "id": "11-verify-brand-compliance",
+      "kind": "code"
+    },
+    {
+      "id": "12-render-preview-check",
+      "kind": "code"
+    },
+    {
+      "id": "13-verify-no-placeholder",
+      "kind": "code"
+    },
+    {
+      "id": "14-verify-no-leak",
+      "kind": "code"
+    },
+    {
+      "id": "15-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "16-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "17-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "18-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "branded-shorts-agent": [
+    {
+      "id": "00-brand-resolve",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-intake",
+      "kind": "code"
+    },
+    {
+      "id": "02-load-brand-profile",
+      "kind": "code"
+    },
+    {
+      "id": "03-transcribe",
+      "kind": "code"
+    },
+    {
+      "id": "04-plan-cut",
+      "kind": "code"
+    },
+    {
+      "id": "05-cut-gate",
+      "kind": "code"
+    },
+    {
+      "id": "06-highlights",
+      "kind": "agent"
+    },
+    {
+      "id": "07-color-grade",
+      "kind": "code"
+    },
+    {
+      "id": "08a-plan-graphics",
+      "kind": "agent"
+    },
+    {
+      "id": "08a2-validate-archetypes",
+      "kind": "code"
+    },
+    {
+      "id": "08b-render-and-gate",
+      "kind": "code"
+    },
+    {
+      "id": "09-self-eval-gate",
+      "kind": "code"
+    },
+    {
+      "id": "10-delivery-review",
+      "kind": "code"
+    },
+    {
+      "id": "10a-upload-to-gcs",
+      "kind": "code"
+    },
+    {
+      "id": "11-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "12-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "13-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "instagram-agent": [
+    {
+      "id": "01-open-run",
+      "kind": "code"
+    },
+    {
+      "id": "02-freeze-style-config",
+      "kind": "code"
+    },
+    {
+      "id": "03-claim-topic",
+      "kind": "code"
+    },
+    {
+      "id": "04a-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "04b-research-extract-facts",
+      "kind": "agent"
+    },
+    {
+      "id": "05a-list-used-images",
+      "kind": "code"
+    },
+    {
+      "id": "05-write-copy",
+      "kind": "agent"
+    },
+    {
+      "id": "05b-source-images",
+      "kind": "code"
+    },
+    {
+      "id": "06-vet-images",
+      "kind": "agent"
+    },
+    {
+      "id": "07-self-check",
+      "kind": "code"
+    },
+    {
+      "id": "07b-craft-hygiene",
+      "kind": "code"
+    },
+    {
+      "id": "07c-emit-slides-data",
+      "kind": "code"
+    },
+    {
+      "id": "08-render-carousel",
+      "kind": "code"
+    },
+    {
+      "id": "08b-visual-qa",
+      "kind": "agent"
+    },
+    {
+      "id": "09a-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "09b-deliver-and-log",
+      "kind": "code"
+    }
+  ],
+  "intel-report-agent": [
+    {
+      "id": "00-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "01-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "02-generate-report",
+      "kind": "agent"
+    },
+    {
+      "id": "03-verify-numbers-sourced",
+      "kind": "code"
+    },
+    {
+      "id": "04-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "05-persist-report",
+      "kind": "code"
+    },
+    {
+      "id": "06-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "07-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "08-record-feedback",
+      "kind": "code"
+    }
+  ],
+  "landing-builder-agent": [
+    {
+      "id": "00-intake",
+      "kind": "code"
+    },
+    {
+      "id": "01-reference",
+      "kind": "code"
+    },
+    {
+      "id": "02-copy",
+      "kind": "agent"
+    },
+    {
+      "id": "03-compose",
+      "kind": "agent"
+    },
+    {
+      "id": "02-copy-rebuild",
+      "kind": "agent"
+    },
+    {
+      "id": "04a-copy-template",
+      "kind": "code"
+    },
+    {
+      "id": "04b-write-generated-files",
+      "kind": "code"
+    },
+    {
+      "id": "05a-gate-deterministic",
+      "kind": "code"
+    },
+    {
+      "id": "05b-gate-fix-and-recheck",
+      "kind": "code"
+    },
+    {
+      "id": "06-render-check",
+      "kind": "code"
+    },
+    {
+      "id": "07-craft-verdict",
+      "kind": "agent"
+    },
+    {
+      "id": "07b-stage-site-bundle",
+      "kind": "code"
+    },
+    {
+      "id": "08-human-review",
+      "kind": "code"
+    },
+    {
+      "id": "08a-restore-site-bundle",
+      "kind": "code"
+    },
+    {
+      "id": "09a-persist-feedback-round",
+      "kind": "code"
+    },
+    {
+      "id": "09b-upload-site-bundle",
+      "kind": "code"
+    },
+    {
+      "id": "09c-persist-deliverable",
+      "kind": "code"
+    }
+  ],
+  "linkedin-agent": [
+    {
+      "id": "00-intake-check",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "02-load-memory-shelf",
+      "kind": "code"
+    },
+    {
+      "id": "03-load-recent-decisions",
+      "kind": "code"
+    },
+    {
+      "id": "04-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "05-extract-candidate-summary",
+      "kind": "code"
+    },
+    {
+      "id": "06-reserve-topic",
+      "kind": "code"
+    },
+    {
+      "id": "07-select-candidate",
+      "kind": "code"
+    },
+    {
+      "id": "08-determine-archetype",
+      "kind": "code"
+    },
+    {
+      "id": "09-draft-post",
+      "kind": "agent"
+    },
+    {
+      "id": "10-verify-numbers-sourced",
+      "kind": "code"
+    },
+    {
+      "id": "11-verify-brand-compliance",
+      "kind": "code"
+    },
+    {
+      "id": "12-render-preview-check",
+      "kind": "code"
+    },
+    {
+      "id": "13-verify-no-placeholder",
+      "kind": "code"
+    },
+    {
+      "id": "14-verify-no-leak",
+      "kind": "code"
+    },
+    {
+      "id": "15-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "16-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "17-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "18-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "linkedin-setup-agent": [
+    {
+      "id": "00-parse-intake",
+      "kind": "code"
+    },
+    {
+      "id": "01-save-company-direction",
+      "kind": "code"
+    },
+    {
+      "id": "02-save-seat",
+      "kind": "code"
+    }
+  ],
+  "newsletter-agent": [
+    {
+      "id": "00-intake-check",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "02-load-memory-shelf",
+      "kind": "code"
+    },
+    {
+      "id": "03-load-recent-decisions",
+      "kind": "code"
+    },
+    {
+      "id": "04-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "05-extract-candidate-summary",
+      "kind": "code"
+    },
+    {
+      "id": "06-reserve-topics",
+      "kind": "code"
+    },
+    {
+      "id": "07-select-candidates",
+      "kind": "code"
+    },
+    {
+      "id": "08-determine-edition-theme",
+      "kind": "code"
+    },
+    {
+      "id": "09-draft-post",
+      "kind": "agent"
+    },
+    {
+      "id": "10-verify-brand-compliance",
+      "kind": "code"
+    },
+    {
+      "id": "11-verify-numbers-sourced",
+      "kind": "code"
+    },
+    {
+      "id": "12-verify-compliance-footer",
+      "kind": "code"
+    },
+    {
+      "id": "13-verify-no-placeholder",
+      "kind": "code"
+    },
+    {
+      "id": "14-verify-no-leak",
+      "kind": "code"
+    },
+    {
+      "id": "15-render-preview-check",
+      "kind": "code"
+    },
+    {
+      "id": "16-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "17-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "18-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "19-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "reddit-agent": [
+    {
+      "id": "00-intake-check",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "02-load-memory-shelf",
+      "kind": "code"
+    },
+    {
+      "id": "03-load-recent-decisions",
+      "kind": "code"
+    },
+    {
+      "id": "04-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "05-extract-candidate-summary",
+      "kind": "code"
+    },
+    {
+      "id": "06-reserve-topic",
+      "kind": "code"
+    },
+    {
+      "id": "07-select-candidate",
+      "kind": "code"
+    },
+    {
+      "id": "08-select-target-thread",
+      "kind": "code"
+    },
+    {
+      "id": "09-check-thread-not-answered",
+      "kind": "code"
+    },
+    {
+      "id": "10-verify-subreddit-eligibility",
+      "kind": "code"
+    },
+    {
+      "id": "11-determine-angle",
+      "kind": "code"
+    },
+    {
+      "id": "12-draft-reply",
+      "kind": "agent"
+    },
+    {
+      "id": "13-verify-numbers-sourced",
+      "kind": "code"
+    },
+    {
+      "id": "14-verify-brand-compliance",
+      "kind": "code"
+    },
+    {
+      "id": "15-verify-no-placeholder",
+      "kind": "code"
+    },
+    {
+      "id": "16-verify-leak-check",
+      "kind": "code"
+    },
+    {
+      "id": "17-render-preview-check",
+      "kind": "code"
+    },
+    {
+      "id": "18-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "19-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "20-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "21-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "reddit-setup-agent": [
+    {
+      "id": "00-parse-intake",
+      "kind": "code"
+    },
+    {
+      "id": "01-save-reddit-config",
+      "kind": "code"
+    }
+  ],
+  "reputation-agent": [
+    {
+      "id": "layer0-capture",
+      "kind": "code"
+    },
+    {
+      "id": "layer1-response-behavior-mining",
+      "kind": "code"
+    },
+    {
+      "id": "layer2-reputation-state",
+      "kind": "code"
+    },
+    {
+      "id": "layer3-theme-mining",
+      "kind": "code"
+    },
+    {
+      "id": "layer4-competitor-benchmark",
+      "kind": "code"
+    },
+    {
+      "id": "layer5-synthesis",
+      "kind": "code"
+    }
+  ],
+  "seo-geo-agent": [
+    {
+      "id": "00-intake-check",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "02-draft-prompt-set",
+      "kind": "code"
+    },
+    {
+      "id": "03-prompt-set-review",
+      "kind": "code"
+    },
+    {
+      "id": "04-freeze-prompt-set",
+      "kind": "code"
+    },
+    {
+      "id": "06-derive-technical-measurements",
+      "kind": "code"
+    },
+    {
+      "id": "08-assemble-visibility-cells",
+      "kind": "code"
+    },
+    {
+      "id": "09-compute-scores",
+      "kind": "code"
+    },
+    {
+      "id": "10-connector-overlay",
+      "kind": "code"
+    },
+    {
+      "id": "11-fire-recommendations",
+      "kind": "code"
+    },
+    {
+      "id": "12-fix-generation-review",
+      "kind": "code"
+    },
+    {
+      "id": "13-draft-fixes",
+      "kind": "agent"
+    },
+    {
+      "id": "14-draft-narrative",
+      "kind": "agent"
+    },
+    {
+      "id": "15-verify-narrative-numbers",
+      "kind": "code"
+    },
+    {
+      "id": "16-assemble-report",
+      "kind": "code"
+    },
+    {
+      "id": "17-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "18-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "19-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "tiktok-agent": [
+    {
+      "id": "00-intake",
+      "kind": "code"
+    },
+    {
+      "id": "01-reserve-source",
+      "kind": "code"
+    },
+    {
+      "id": "02-transcribe",
+      "kind": "code"
+    },
+    {
+      "id": "03-select-moment",
+      "kind": "code"
+    },
+    {
+      "id": "03a-moment",
+      "kind": "agent"
+    },
+    {
+      "id": "04-cut-bounds",
+      "kind": "code"
+    },
+    {
+      "id": "05-cut-gate",
+      "kind": "code"
+    },
+    {
+      "id": "06-commentary",
+      "kind": "code"
+    },
+    {
+      "id": "06a-commentary",
+      "kind": "agent"
+    },
+    {
+      "id": "07-compliance",
+      "kind": "code"
+    },
+    {
+      "id": "08-render",
+      "kind": "code"
+    },
+    {
+      "id": "09-qa-gate",
+      "kind": "code"
+    },
+    {
+      "id": "10-topic-guardrail",
+      "kind": "code"
+    },
+    {
+      "id": "guardrail-verify",
+      "kind": "agent"
+    },
+    {
+      "id": "11-clip-review",
+      "kind": "code"
+    },
+    {
+      "id": "12-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "13-commit-and-record",
+      "kind": "code"
+    }
+  ],
+  "x-agent": [
+    {
+      "id": "00-intake-check",
+      "kind": "code"
+    },
+    {
+      "id": "01-load-client-context",
+      "kind": "code"
+    },
+    {
+      "id": "02-load-memory-shelf",
+      "kind": "code"
+    },
+    {
+      "id": "03-load-recent-decisions",
+      "kind": "code"
+    },
+    {
+      "id": "04-research-pull",
+      "kind": "code"
+    },
+    {
+      "id": "05-extract-candidate-summary",
+      "kind": "code"
+    },
+    {
+      "id": "06-reserve-topic",
+      "kind": "code"
+    },
+    {
+      "id": "07-select-candidate",
+      "kind": "code"
+    },
+    {
+      "id": "08-select-lane",
+      "kind": "code"
+    },
+    {
+      "id": "09-check-engagement-cap",
+      "kind": "code"
+    },
+    {
+      "id": "10-draft-post",
+      "kind": "agent"
+    },
+    {
+      "id": "11-verify-numbers-sourced",
+      "kind": "code"
+    },
+    {
+      "id": "12-verify-brand-compliance",
+      "kind": "code"
+    },
+    {
+      "id": "13-verify-link-placement",
+      "kind": "code"
+    },
+    {
+      "id": "14-render-preview-check",
+      "kind": "code"
+    },
+    {
+      "id": "15-batch-review",
+      "kind": "code"
+    },
+    {
+      "id": "16-verify-no-placeholder",
+      "kind": "code"
+    },
+    {
+      "id": "17-verify-no-leak",
+      "kind": "code"
+    },
+    {
+      "id": "18-persist-deliverable",
+      "kind": "code"
+    },
+    {
+      "id": "19-persist-manifest",
+      "kind": "code"
+    },
+    {
+      "id": "20-commit-and-record",
+      "kind": "code"
+    }
+  ]
 }

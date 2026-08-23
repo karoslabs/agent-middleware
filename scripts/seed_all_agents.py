@@ -344,6 +344,35 @@ CATALOG: tuple[dict[str, Any], ...] = (
             },
         ],
     },
+    {
+        "slug": "tiktok-agent",
+        "name": "TikTok Commentary Clips",
+        "description": (
+            "Finds the single best moment in a long-form episode, cuts it on sentence boundaries, "
+            "and writes the client's own take over it. Draft-only: a human approves every clip."
+        ),
+        "icon": "Video",
+        "category": "social",
+        "credit_cost": 12,
+        "agent_type": "tiktok_clip",
+        "tags": ["social", "tiktok", "video", "draft-only"],
+        "required_inputs": [
+            {
+                "key": "sourcePath",
+                "type": "text",
+                "label": "Episode media file",
+                "required": True,
+                "placeholder": "The long-form episode this clip comes out of",
+            },
+            {
+                "key": "request",
+                "type": "textarea",
+                "label": "A specific moment to clip?",
+                "required": False,
+                "placeholder": "Leave blank to take the next candidate from the topic catalog",
+            },
+        ],
+    },
 )
 
 #: Default model for every agent, by normalized id from the `models`
