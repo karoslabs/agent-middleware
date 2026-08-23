@@ -756,5 +756,29 @@
    "id": "19-commit-and-record",
    "kind": "code"
   }
+ ],
+ "linkedin-setup-agent": [
+  {
+   "id": "00-parse-intake",
+   "kind": "code"
+  },
+  {
+   "id": "01-save-company-direction",
+   "kind": "code"
+  },
+  {
+   "id": "02-save-seat",
+   "kind": "code"
+  }
+ ],
+ "reddit-setup-agent": [
+  {
+   "id": "00-parse-intake",
+   "kind": "code"
+  },
+  {
+   "id": "01-save-reddit-config",
+   "kind": "code"
+  }
  ]
 }

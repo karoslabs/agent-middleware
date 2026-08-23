@@ -301,6 +301,49 @@ CATALOG: tuple[dict[str, Any], ...] = (
             },
         ],
     },
+    {
+        "slug": "linkedin-setup-agent",
+        "name": "LinkedIn Setup",
+        "description": (
+            "Records filled seat intake forms as the charters the LinkedIn writer reads. "
+            "Onboarding, not drafting -- it runs no model."
+        ),
+        "icon": "UserPlus",
+        "category": "onboarding",
+        "credit_cost": 0,
+        "agent_type": "linkedin_setup",
+        "tags": ["onboarding", "linkedin"],
+        "required_inputs": [
+            {
+                "key": "companyUpdates",
+                "type": "textarea",
+                "label": "Standing direction for the company page",
+                "required": False,
+            },
+        ],
+    },
+    {
+        "slug": "reddit-setup-agent",
+        "name": "Reddit Setup",
+        "description": (
+            "Records which communities a client may post into, and how. Draft-only downstream: "
+            "a human always posts the reply from their own account."
+        ),
+        "icon": "UserPlus",
+        "category": "onboarding",
+        "credit_cost": 0,
+        "agent_type": "reddit_setup",
+        "tags": ["onboarding", "reddit"],
+        "required_inputs": [
+            {
+                "key": "targetSubreddits",
+                "type": "text",
+                "label": "Subreddits (comma separated)",
+                "required": True,
+                "placeholder": "r/marketing, r/SaaS",
+            },
+        ],
+    },
 )
 
 #: Default model for every agent, by normalized id from the `models`
