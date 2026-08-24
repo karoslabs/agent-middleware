@@ -441,6 +441,13 @@ def load_stages() -> dict[str, list[dict[str, Any]]]:
                 # model picker on exactly those -- so dropping this field made
                 # every stage read as "code" and the picker appear nowhere.
                 "kind": step["kind"],
+                # Which prompt this stage loads, when it loads one. The Studio
+                # needs it to put the right prompt editor beside the right
+                # stage; the engine resolves it from the agent class's own
+                # config, so this is a mirror of a fact rather than a source
+                # of one. Absent on code steps and on the shared guardrail,
+                # which builds its prompt inline from client config.
+                "skill_ref": step.get("skill_ref"),
                 # No override until somebody sets one in the Studio. Written
                 # explicitly so the field exists on the document rather than
                 # being absent and read as a default.
