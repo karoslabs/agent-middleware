@@ -1,5 +1,11 @@
 """Per-stage model selection: validation on the way in, delivery on the way out.
 
+`kind` is `"agent"`, not `"ai"`, and that is the whole reason this feature did
+not work when it first shipped: the engine calls a model step `"agent"` in its
+own StepKindSchema and in engine_stages.json, this schema called it `"ai"`, and
+so every seeded stage fell back to `"code"` and the Studio picker rendered on
+none of them.
+
 The two halves that matter are that a stage cannot name a model nothing routes,
 and that a stage which names a real one actually reaches the engine with it.
 A per-stage model that is accepted, stored, shown in the Studio and then
@@ -18,7 +24,7 @@ from tests.test_models import make_model
 
 def _stages(**overrides: Any) -> list[dict[str, Any]]:
     base: list[dict[str, Any]] = [
-        {"id": "01-draft", "label": "Draft", "kind": "ai"},
+        {"id": "01-draft", "label": "Draft", "kind": "agent"},
         {"id": "02-verify", "label": "Verify", "kind": "code"},
     ]
     for stage in base:

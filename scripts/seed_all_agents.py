@@ -436,6 +436,15 @@ def load_stages() -> dict[str, list[dict[str, Any]]]:
                 # A gate pauses for a human, which is the difference between an
                 # agent that finishes on its own and one that waits.
                 "is_gate": step["kind"] == "gate",
+                # Carried through, not just collapsed into `is_gate`. Only an
+                # "ai" stage calls a model, and the Studio offers its per-stage
+                # model picker on exactly those -- so dropping this field made
+                # every stage read as "code" and the picker appear nowhere.
+                "kind": step["kind"],
+                # No override until somebody sets one in the Studio. Written
+                # explicitly so the field exists on the document rather than
+                # being absent and read as a default.
+                "model_id": None,
             }
             for step in steps
         ]
@@ -479,6 +488,36 @@ def build_document(entry: dict[str, Any], stages: list[dict[str, Any]], now: Any
         "created_at": now,
         "updated_at": now,
     }
+
+
+def preserve_stage_models(
+    current: Any, incoming: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Carries a Studio-set ``model_id`` across a re-seed.
+
+    ``stages`` is regenerated wholesale from ``engine_stages.json``, because the
+    stage LIST is the workflow's and this script is its mirror. ``model_id`` is
+    the one field on a stage that a person sets rather than the workflow, so a
+    re-seed that rebuilt the list without it would silently reset every
+    per-stage model choice -- the same shape of bug as a deploy dropping an
+    env var, and just as quiet.
+
+    Matched on stage id. A stage that no longer exists loses its override,
+    which is correct: there is nothing left for it to configure.
+    """
+    if not isinstance(current, list):
+        return incoming
+    chosen = {
+        stage.get("id"): stage.get("model_id")
+        for stage in current
+        if isinstance(stage, dict) and stage.get("model_id")
+    }
+    if not chosen:
+        return incoming
+    return [
+        {**stage, "model_id": chosen.get(stage["id"], stage.get("model_id"))}
+        for stage in incoming
+    ]
 
 
 def comparable(row: dict[str, Any]) -> str:
@@ -532,6 +571,10 @@ def main() -> int:
         existing = ref.get()
         if existing.exists:
             current = existing.to_dict() or {}
+            document = {
+                **document,
+                "stages": preserve_stage_models(current.get("stages"), document["stages"]),
+            }
             merged = {**current, **document}
             if comparable({**current, "id": slug}) == comparable(merged):
                 report.record("unchanged", label)

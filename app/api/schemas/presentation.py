@@ -37,10 +37,17 @@ class AgentStage(BaseModel):
     #: A gate pauses for a human. Worth showing, because it is the difference
     #: between an agent that finishes on its own and one that waits.
     is_gate: bool = False
-    #: Which of the two kinds of step this is. Only ``"ai"`` stages call a
-    #: model, so only they can carry a ``model_id`` -- offering the picker on a
-    #: code step would be offering a setting that does nothing.
-    kind: Literal["ai", "code", "gate"] = "code"
+    #: Which kind of step this is, in AGENT-ENGINE's own vocabulary --
+    #: ``"agent"`` for a model step, matching its ``StepKindSchema`` and the
+    #: ``kind`` field in ``engine_stages.json``.
+    #:
+    #: This field first shipped as ``Literal["ai", "code", "gate"]``, which no
+    #: seeded stage could ever satisfy: every model step in the engine is
+    #: ``"agent"``, so all 206 stages fell back to ``"code"`` and the Studio's
+    #: per-stage model picker -- rendered only on model steps -- appeared on
+    #: none of them. Naming a concept differently on each side of a wire is how
+    #: a feature ships looking complete and does nothing.
+    kind: Literal["agent", "code", "gate"] = "code"
     #: A document id from the ``models`` collection, overriding whatever model
     #: this stage is compiled to use. Null means "leave the stage alone".
     #:
