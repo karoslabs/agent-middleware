@@ -51,6 +51,27 @@ STAGES_FILE = Path(__file__).with_name("engine_stages.json")
 #: Every hand-written workflow agent-engine can dispatch, with the metadata the
 #: portal needs to render it. `model` references the normalized `models`
 #: collection (see seed_models.py), never a loose vendor string.
+#: Agents that WERE products and no longer are.
+#:
+#: Removing an entry from ``CATALOG`` is not enough on its own: this script
+#: never deletes, so a dropped agent keeps its Firestore document, keeps
+#: ``deleted_at: None``, and keeps appearing in the portal catalog exactly as
+#: before. Retiring it has to be an action, not an omission.
+#:
+#: Stamping ``deleted_at`` + ``status: disabled`` is what the control plane's own
+#: ``DELETE /agents/{slug}`` does, and ``list_agents`` filters on it. The document
+#: is kept rather than deleted for the same reason that endpoint keeps it: runs,
+#: prompts and feedback reference the agent, and a dangling id in that history is
+#: worse than a retired row.
+RETIRED: dict[str, str] = {
+    # Inlined into their parent agents as the `00-channel-setup` pre-flight
+    # (agent-engine `agents/setup-agents/src/workflow/channel-setup.ts`).
+    # Sequencing setup before drafting used to be the operator's job and nothing
+    # enforced it; now each drafting agent checks its own channel context.
+    "linkedin-setup-agent": "inlined into linkedin-agent as its 00-channel-setup pre-flight",
+    "reddit-setup-agent": "inlined into reddit-agent as its 00-channel-setup pre-flight",
+}
+
 CATALOG: tuple[dict[str, Any], ...] = (
     {
         "slug": "instagram-agent",
@@ -302,49 +323,6 @@ CATALOG: tuple[dict[str, Any], ...] = (
         ],
     },
     {
-        "slug": "linkedin-setup-agent",
-        "name": "LinkedIn Setup",
-        "description": (
-            "Records filled seat intake forms as the charters the LinkedIn writer reads. "
-            "Onboarding, not drafting -- it runs no model."
-        ),
-        "icon": "UserPlus",
-        "category": "onboarding",
-        "credit_cost": 0,
-        "agent_type": "linkedin_setup",
-        "tags": ["onboarding", "linkedin"],
-        "required_inputs": [
-            {
-                "key": "companyUpdates",
-                "type": "textarea",
-                "label": "Standing direction for the company page",
-                "required": False,
-            },
-        ],
-    },
-    {
-        "slug": "reddit-setup-agent",
-        "name": "Reddit Setup",
-        "description": (
-            "Records which communities a client may post into, and how. Draft-only downstream: "
-            "a human always posts the reply from their own account."
-        ),
-        "icon": "UserPlus",
-        "category": "onboarding",
-        "credit_cost": 0,
-        "agent_type": "reddit_setup",
-        "tags": ["onboarding", "reddit"],
-        "required_inputs": [
-            {
-                "key": "targetSubreddits",
-                "type": "text",
-                "label": "Subreddits (comma separated)",
-                "required": True,
-                "placeholder": "r/marketing, r/SaaS",
-            },
-        ],
-    },
-    {
         "slug": "tiktok-agent",
         "name": "TikTok Commentary Clips",
         "description": (
@@ -407,7 +385,7 @@ class Report:
 
     def record(self, outcome: str, what: str) -> None:
         self.counts[outcome] += 1
-        symbols = {"created": "+", "updated": "~", "unchanged": "="}
+        symbols = {"created": "+", "updated": "~", "unchanged": "=", "retired": "-"}
         print(f"  {symbols.get(outcome, '?')} {outcome:<9} {what}")
 
 
@@ -555,10 +533,33 @@ def main() -> int:
 
     print(f"Registering agent-engine workflows in {FIRESTORE_PROJECT}/{database}")
     print(f"  mode   : {'DRY RUN' if args.dry_run else 'WRITING'}")
-    print(f"  agents : {len(CATALOG)}\n")
+    print(f"  agents : {len(CATALOG)} live, {len(RETIRED)} retired\n")
 
     report = Report()
     now = firestore.SERVER_TIMESTAMP
+
+    for slug, why in RETIRED.items():
+        ref = db.collection(COLLECTION).document(slug)
+        existing = ref.get()
+        if not existing.exists:
+            continue
+        current = existing.to_dict() or {}
+        if current.get("deleted_at") is not None:
+            report.record("unchanged", f"{slug} (already retired)")
+            continue
+        if args.dry_run:
+            report.record("retired", f"{slug} -- {why}")
+            continue
+        # Same shape as DELETE /agents/{slug}: stamped and disabled, never
+        # removed. ``retired_reason`` is ours -- the endpoint records no why, and
+        # a row that vanished from the catalog with no explanation is the thing
+        # somebody re-adds by accident six months later.
+        ref.set(
+            {"deleted_at": now, "status": "disabled", "retired_reason": why, "updated_at": now},
+            merge=True,
+        )
+        report.record("retired", f"{slug} -- {why}")
+
     for entry in CATALOG:
         slug = entry["slug"]
         stages = stages_by_slug.get(slug)
