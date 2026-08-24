@@ -27,7 +27,7 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.api.routes import agents, context, health, models, prompts, runs, templates
+from app.api.routes import agents, context, engine_prompts, health, models, prompts, runs, templates
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     IncompleteAgentConfigurationError,
@@ -42,6 +42,7 @@ from app.security import require_service_identity
 from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
+from app.services.engine_prompts import EnginePromptService
 from app.services.feedback import FeedbackService
 from app.services.models import ModelService
 from app.services.prompts import PromptService
@@ -68,6 +69,7 @@ def build_services(
     publisher = publisher or PublisherService(settings)
     agent_service = AgentService(database)
     prompt_service = PromptService(database)
+    engine_prompt_service = EnginePromptService(database)
     template_service = TemplateService(database)
     model_service = ModelService(database)
     run_service = RunService(database)
@@ -78,6 +80,7 @@ def build_services(
     app.state.publisher = publisher
     app.state.agent_service = agent_service
     app.state.prompt_service = prompt_service
+    app.state.engine_prompt_service = engine_prompt_service
     app.state.template_service = template_service
     app.state.model_service = model_service
     app.state.run_service = run_service
@@ -146,6 +149,7 @@ def create_app() -> FastAPI:
     protected = [Depends(require_service_identity)]
     app.include_router(agents.router, dependencies=protected)
     app.include_router(prompts.router, dependencies=protected)
+    app.include_router(engine_prompts.router, dependencies=protected)
     app.include_router(templates.router, dependencies=protected)
     app.include_router(templates.agent_router, dependencies=protected)
     app.include_router(models.router, dependencies=protected)

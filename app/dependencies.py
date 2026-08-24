@@ -16,6 +16,7 @@ from app.db.firestore import FirestoreDB
 from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
+from app.services.engine_prompts import EnginePromptService
 from app.services.feedback import FeedbackService
 from app.services.models import ModelService
 from app.services.prompts import PromptService
@@ -37,6 +38,10 @@ def get_agent_service(request: Request) -> AgentService:
 
 def get_prompt_service(request: Request) -> PromptService:
     return request.app.state.prompt_service
+
+
+def get_engine_prompt_service(request: Request) -> EnginePromptService:
+    return request.app.state.engine_prompt_service
 
 
 def get_template_service(request: Request) -> TemplateService:
