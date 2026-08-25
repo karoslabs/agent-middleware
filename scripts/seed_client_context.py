@@ -125,8 +125,33 @@ def build_brand(doc: dict[str, Any]) -> dict[str, Any]:
             "visualStyle": guidelines.get("visualStyle"),
             "guidelines": guidelines.get("guidelines"),
             "logoUrl": guidelines.get("logoUrl") or doc.get("logoUrl"),
+            # The client's own Instagram handle, rendered as the @-watermark
+            # on every slide by instagram-agent's Brand Kit. Normalisation
+            # (single leading "@", character whitelist) happens on the engine
+            # side (deriveBrandRenderTokens), so this projects the portal
+            # value verbatim.
+            "handle": _instagram_handle(doc),
         }
     )
+
+
+def _instagram_handle(doc: dict[str, Any]) -> str | None:
+    """The instagram handle from karosCMO's ``socialLinks``, tolerant of a full URL.
+
+    Portal users paste either a bare handle ("geektimecoil", "@geektimecoil")
+    or a profile URL ("https://instagram.com/geektimecoil/"); the engine wants
+    the bare name and drops anything it cannot sanitise, so a malformed value
+    costs the watermark, never the run.
+    """
+    social = doc.get("socialLinks") or {}
+    raw = social.get("instagram")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    value = raw.strip().rstrip("/")
+    if "/" in value:
+        value = value.rsplit("/", 1)[-1]
+    value = value.lstrip("@").split("?")[0]
+    return value or None
 
 
 def build_voice_rules(doc: dict[str, Any]) -> dict[str, Any]:
