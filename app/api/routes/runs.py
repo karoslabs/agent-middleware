@@ -25,7 +25,9 @@ from app.api.schemas.run import (
     RunUpdate,
 )
 from app.core.enums import FeedbackStatus, RunStatus
+from app.core.roles import Role
 from app.dependencies import get_feedback_service, get_run_service, resolve_agent
+from app.security import require_role
 from app.services.feedback import FeedbackService
 from app.services.runs import RunService
 
@@ -46,6 +48,7 @@ router = APIRouter(prefix="/agents/{agent_id}", tags=["runs & feedback"])
         "used. Dispatching through ``POST /agents/{agent_id}/jobs`` does this "
         "automatically."
     ),
+    dependencies=[Depends(require_role(Role.EDITOR))],
 )
 async def register_run(
     payload: RunCreate,
@@ -102,6 +105,7 @@ async def get_run(
         "The engine (or the portal on its behalf) reports status, the produced "
         "artifact, or an error. A terminal status stamps ``completed_at``."
     ),
+    dependencies=[Depends(require_role(Role.EDITOR))],
 )
 async def update_run(
     run_id: str,
@@ -126,6 +130,7 @@ async def update_run(
         "and optionally the corrected output. Several reviewers may each leave "
         "feedback on the same run."
     ),
+    dependencies=[Depends(require_role(Role.EDITOR))],
 )
 async def create_feedback(
     run_id: str,
@@ -221,6 +226,7 @@ async def list_feedback_examples(
         "Creates an active example from the reviewer's corrected output (or the "
         "run's own output) and links it back to the feedback it came from."
     ),
+    dependencies=[Depends(require_role(Role.EDITOR))],
 )
 async def promote_feedback(
     feedback_id: str,

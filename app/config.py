@@ -5,6 +5,8 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.roles import Role
+
 
 class Settings(BaseSettings):
     """Strongly-typed application settings.
@@ -74,6 +76,22 @@ class Settings(BaseSettings):
             "integration tests. Refused outright when environment=production."
         ),
     )
+    auth_role_bindings: dict[str, Role] = Field(
+        default_factory=dict,
+        description=(
+            "Caller principal -> role, as a JSON object keyed by service-account email "
+            'e.g. {"portal@karoscmo.iam.gserviceaccount.com": "editor"}. A principal '
+            "absent from this map falls back to auth_default_role."
+        ),
+    )
+    auth_default_role: Role = Field(
+        default=Role.VIEWER,
+        description=(
+            "Role for an authenticated caller with no entry in auth_role_bindings. "
+            "Defaults to the least authority, so an unbound caller can read and not "
+            "write. Set to 'admin' only as a deliberate, temporary migration step."
+        ),
+    )
 
     # --- GCS (binary template assets) ---
     gcs_artifacts_bucket: str | None = Field(
@@ -124,6 +142,26 @@ class Settings(BaseSettings):
         """Topic agent job payloads are published to."""
 
         return self.pubsub_job_topic_id
+
+    def role_for(self, principal: str | None) -> Role:
+        """The role a verified principal holds.
+
+        ``principal`` is the caller's service-account email, or its subject when
+        Google issued a token without one. An unbound caller gets
+        ``auth_default_role`` -- ``viewer`` unless someone widened it -- so the
+        failure mode of forgetting a binding is a refused write with the
+        principal named in the message, not a silent grant.
+        """
+
+        if principal and principal in self.auth_role_bindings:
+            return self.auth_role_bindings[principal]
+        return self.auth_default_role
+
+    @property
+    def role_bindings_missing(self) -> bool:
+        """Auth is on and nothing is bound -- every caller is on the default."""
+
+        return self.auth_enabled and not self.auth_role_bindings
 
     @property
     def dev_token_permitted(self) -> bool:

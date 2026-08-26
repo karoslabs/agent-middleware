@@ -15,16 +15,18 @@ so no ``@`` ever has to survive a URL.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 
 from app.api.schemas.engine_prompt import (
     EnginePromptRead,
     EnginePromptUpdate,
     EnginePromptVersionSummary,
 )
+from app.core.roles import Role
 from app.dependencies import get_engine_prompt_service
+from app.security import CallerIdentity, require_role
 from app.services.engine_prompts import EnginePromptService
 
 router = APIRouter(prefix="/engine-prompts", tags=["engine prompts"])
@@ -77,10 +79,14 @@ async def replace_version(
     prompt_id: str,
     version: str,
     payload: EnginePromptUpdate,
-    actor: Annotated[str | None, Query(description="Who is saving, for the audit trail")] = None,
+    identity: CallerIdentity = Depends(require_role(Role.EDITOR)),
     prompts: EnginePromptService = Depends(get_engine_prompt_service),
 ) -> EnginePromptRead:
-    updated = await prompts.write(f"{prompt_id}@{version}", payload.content, actor)
+    # The actor is the verified caller, not a query parameter. It used to be
+    # `?actor=`, free text compared against nothing -- so the audit trail for a
+    # prompt edit recorded whatever the caller chose to send, including
+    # nothing. A record that cannot be wrong is also not evidence.
+    updated = await prompts.write(f"{prompt_id}@{version}", payload.content, identity.actor)
     return EnginePromptRead.model_validate(updated)
 
 
