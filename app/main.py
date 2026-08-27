@@ -113,14 +113,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     if settings.role_bindings_missing:
-        # Loud, because the symptom is a 403 on a write that used to succeed and
-        # the cause is one unset variable. Naming it here means the answer is in
-        # the startup log of the revision that started refusing.
+        # Loud, because nothing else surfaces it: authorization is switched off
+        # while looking switched on. Every verified caller holds admin, exactly
+        # as before roles existed, and the first binding is what makes the model
+        # start enforcing.
         logger.error(
-            "AUTH_ROLE_BINDINGS is empty while authentication is enabled: every "
-            "verified caller falls back to AUTH_DEFAULT_ROLE=%s. Bind the calling "
-            "service accounts before turning authentication on, or writes will be "
-            "refused.",
+            "AUTH_ROLE_BINDINGS is empty while authentication is enabled: "
+            "authorization is NOT being enforced and every verified caller holds "
+            "admin. Bind the calling service accounts (AUTH_ROLE_BINDINGS) to turn "
+            "it on; unbound callers then fall to AUTH_DEFAULT_ROLE=%s.",
             settings.auth_default_role.value,
         )
 
@@ -134,7 +135,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "enabled" if settings.auth_enabled else "disabled",
     )
     logger.info(
-        "authorization: %d role binding(s), default role %s",
+        "authorization: %s (%d role binding(s), default role %s)",
+        "enforcing" if settings.auth_role_bindings else "NOT ENFORCING (no bindings)",
         len(settings.auth_role_bindings),
         settings.auth_default_role.value,
     )

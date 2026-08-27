@@ -331,12 +331,63 @@ def test_an_admin_can_destroy(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_an_unbound_caller_falls_back_to_the_default_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Forgetting a binding must fail toward LESS authority. The alternative --
-    # unbound means admin -- is a role model that grants everything to everyone
-    # until somebody remembers, which is the state this ticket describes.
+    # Once ANY binding exists, a caller nobody bound fails toward less
+    # authority. That is what makes a forgotten binding a refused write with
+    # the principal named, rather than a silent grant.
     _as(monkeypatch, "someone-else@karoscmo.iam.gserviceaccount.com")
     for client in _client_with(_bound("admin")):
         assert client.get("/agents", headers=HEADERS).status_code == 200
+        assert (
+            client.post(
+                "/agents", json={"slug": "writer", "name": "Writer"}, headers=HEADERS
+            ).status_code
+            == 403
+        )
+
+
+def test_no_bindings_at_all_means_authorization_is_not_enforced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty binding map must not change behaviour. This is the one that
+    stops this feature taking production down.
+
+    AUTH_ENABLED is hardcoded true in cloudbuild.yaml for BOTH environments, so
+    every caller here is already a verified principal -- unlike agent-engine,
+    where auth is still off. If an unbound caller fell to `viewer` while the map
+    was empty, the first deploy carrying this code would 403 every write the
+    portal makes: create, update, dispatch, run callbacks.
+
+    So an empty map means authorization is not configured, and every verified
+    caller holds admin exactly as it did before roles existed. Startup logs an
+    error while that is true, and binding one principal switches enforcement on.
+    """
+
+    _as(monkeypatch, PORTAL)
+    settings = _settings(auth_audience="https://mw.example.run.app")
+    assert settings.auth_role_bindings == {}
+    assert settings.role_bindings_missing
+
+    for client in _client_with(settings):
+        assert client.get("/agents", headers=HEADERS).status_code == 200
+        assert (
+            client.post(
+                "/agents", json={"slug": "writer", "name": "Writer"}, headers=HEADERS
+            ).status_code
+            == 201
+        )
+        # ...including the admin-only routes, because "not enforced" has to mean
+        # not enforced. A partial grant would be a third behaviour nobody asked
+        # for and nobody could reason about.
+        assert client.delete("/agents/writer", headers=HEADERS).status_code == 200
+
+
+def test_binding_one_principal_turns_enforcement_on_for_everyone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The migration story: adding the first binding is the switch. No flag day,
+    # and clearing the map rolls it back.
+    _as(monkeypatch, "unbound@karoscmo.iam.gserviceaccount.com")
+    for client in _client_with(_bound("editor")):
         assert (
             client.post(
                 "/agents", json={"slug": "writer", "name": "Writer"}, headers=HEADERS
