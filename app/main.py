@@ -27,7 +27,17 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.api.routes import agents, context, engine_prompts, health, models, prompts, runs, templates
+from app.api.routes import (
+    agents,
+    clients,
+    context,
+    engine_prompts,
+    health,
+    models,
+    prompts,
+    runs,
+    templates,
+)
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     IncompleteAgentConfigurationError,
@@ -38,9 +48,11 @@ from app.core.exceptions import (
 )
 from app.core.roles import Role
 from app.db.firestore import FirestoreDB
+from app.db.workspace import WorkspaceStore, build_workspace_store
 from app.logging_config import configure_logging
 from app.security import require_role, require_service_identity
 from app.services.agents import AgentService
+from app.services.client_context import ClientContextProjector
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
 from app.services.engine_prompts import EnginePromptService
@@ -59,15 +71,18 @@ def build_services(
     settings: Settings,
     database: FirestoreDB,
     publisher: PublisherService | None = None,
+    workspace: WorkspaceStore | None = None,
 ) -> None:
     """Construct every service once and attach it to ``app.state``.
 
     Request handlers reach these through ``app.dependencies``, so no handler ever
-    builds a Firestore or Pub/Sub client of its own. ``publisher`` is injectable
-    so tests can wire a fake Pub/Sub client without patching module globals.
+    builds a Firestore or Pub/Sub client of its own. ``publisher`` and
+    ``workspace`` are injectable so tests can wire fakes without patching
+    module globals -- the same arrangement, and the same reason, as Pub/Sub.
     """
 
     publisher = publisher or PublisherService(settings)
+    workspace = workspace if workspace is not None else build_workspace_store(settings)
     agent_service = AgentService(database)
     prompt_service = PromptService(database)
     engine_prompt_service = EnginePromptService(database)
@@ -89,6 +104,11 @@ def build_services(
     app.state.context_service = context_service
     app.state.dispatch_service = DispatchService(
         settings, context_service, run_service, publisher
+    )
+    # None when no bucket is configured, which is the local default. The two
+    # routes that need it answer 503 naming the variable; nothing else cares.
+    app.state.projector = (
+        ClientContextProjector(database, workspace) if workspace is not None else None
     )
 
 
@@ -176,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router, dependencies=protected)
     app.include_router(context.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
+    app.include_router(clients.router, dependencies=protected)
 
     register_exception_handlers(app)
     return app
