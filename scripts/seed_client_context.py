@@ -8,9 +8,11 @@ which read one JSON record per key out of the workspace bucket::
     gs://<bucket>/clients/<slug>/client/brand.json
     gs://<bucket>/clients/<slug>/client/voice-rules.json
     gs://<bucket>/clients/<slug>/client/config.json
+    gs://<bucket>/clients/<slug>/client/competitors.json
+    gs://<bucket>/clients/<slug>/context/<docType>.json
 
 Production had none of these, so every production agent-engine run would stop
-at ``blocked_intake`` before doing any work. This projects them from the two
+at ``blocked_intake`` before doing any work. This projects them from the three
 places the data actually lives:
 
 * **karosCMO Firestore** (``clients`` collection) -- the authoritative record
@@ -27,6 +29,21 @@ gets no ``industry`` key, not a guess. In particular this does NOT synthesise
 guess those and blocks the run instead, and a seeder that quietly invented
 them would defeat exactly the check that exists to stop unreviewed styling
 reaching a client's feed.
+
+The last two paths are the C1 contract (``docs/contracts/C1-client-context.md``)
+and they are the richer half. ``client/profile|brand|voice-rules`` are a handful
+of fields off the client record -- one free-text voice line and some colours --
+while ``context/<docType>.json`` carries the analyst-grade documents the
+onboarding pipeline actually writes: brand voice, market strategy, competitor
+analysis, product information, branding guidelines, target audience, and the
+three per-agent identity profiles. Each is projected with full provenance
+(which Firestore document, at which version, when, by which mechanism, and a
+hash of the text) so ``report_client_readiness.py`` can say how stale the copy
+an agent reads has become, rather than assuming it is current.
+
+Only the ``internal`` tier is projected, and never with a fallback -- see
+``PROJECTED_TIER``. And ``clientCompetitors`` fills the one path
+``client.listCompetitors`` has always read and nothing has ever written.
 
 ``--skeleton`` is the exception, and it is refused against production for that
 reason. It writes prep-only placeholders for everything an agent refuses to
@@ -53,6 +70,7 @@ import json
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 ENVIRONMENTS: dict[str, dict[str, str]] = {
@@ -169,6 +187,182 @@ def build_voice_rules(doc: dict[str, Any]) -> dict[str, Any]:
             "guidelines": guidelines.get("guidelines"),
         }
     )
+
+
+# --- Context documents (C1) -------------------------------------------------
+#
+# See docs/contracts/C1-client-context.md. The agent reads a PROJECTED COPY of
+# the client's documents and never Firestore, so the projection carries enough
+# provenance for the readiness report to measure how stale that copy is.
+
+#: The nine docTypes projected in v1. `meeting-notes` is excluded as noisy;
+#: `client-guidelines` and `action-plan` are the `internal-only` tier and need
+#: a product decision before an agent ever sees them.
+PROJECTED_DOC_TYPES: tuple[str, ...] = (
+    "brand-voice",
+    "market-strategy",
+    "competitor-analysis",
+    "product-information",
+    "branding-guidelines",
+    "target-audience",
+    # Complement `strategy/<agent>` rather than replacing it: that one is the
+    # charter (what the account is FOR), these are the identity narrative.
+    "x-agent-profile",
+    "linkedin-agent-profile",
+    "reddit-agent-profile",
+)
+
+#: The only tier projected, and never with a fallback.
+#:
+#: `clientContextDocs` is keyed by (clientId, docType, tier), not by docType --
+#: `getClientContextDocByTier` in karosCMO exists because a client-facing
+#: document and its internal twin share a docType and an unordered `.limit(1)`
+#: used to return whichever Firestore felt like. The `client` tier is a
+#: condensed ~50% derivative, so falling back to it would ground an agent on
+#: half a document WHILE LOOKING FULLY CONFIGURED. A docType present only at
+#: another tier is absent, and reported as absent.
+PROJECTED_TIER = "internal"
+
+
+def build_context_record(
+    doc: dict[str, Any],
+    *,
+    doc_type: str,
+    firestore_doc_id: str,
+    projected_at: str,
+    projected_by: str,
+) -> dict[str, Any] | None:
+    """The C1 envelope for one context document, or ``None`` to skip it.
+
+    Returns ``None`` rather than raising, because a client missing one document
+    is an ordinary state and the caller reports it alongside every other gap.
+
+    Two refusals, both deliberate:
+
+    * A document at any tier other than ``internal``. See ``PROJECTED_TIER``.
+    * Empty or whitespace-only content. ``client.getStrategy`` already returns
+      ``not_available`` for both a missing file and an empty one, for the
+      reason written in its own source -- "an empty document is worse than a
+      missing one: it would silently hand the model no charter while looking
+      configured". Writing the empty one would put that exact object on disk.
+    """
+
+    if doc.get("tier") != PROJECTED_TIER:
+        return None
+
+    markdown = doc.get("content")
+    if not isinstance(markdown, str) or not markdown.strip():
+        return None
+
+    raw_version = doc.get("version")
+    # An unknown version sorts below every real one, so the document reads as
+    # STALE in the readiness report until the next portal write bumps it. That
+    # is the right direction to fail: the content is real and worth having, and
+    # a permanently-stale row is loud, where refusing to project would throw
+    # away good grounding over a bookkeeping gap.
+    version = raw_version if isinstance(raw_version, int) else 0
+
+    return {
+        "docType": doc_type,
+        # `markdown`, not `content`: this matches StrategyDocument, which is the
+        # envelope agent-engine already reads prose from. The rename happens
+        # once, here, rather than adding a third shape to the workspace.
+        "markdown": markdown,
+        "source": {
+            "firestoreDocId": firestore_doc_id,
+            "docVersion": version,
+            "tier": PROJECTED_TIER,
+            "projectedAt": projected_at,
+            "projectedBy": projected_by,
+            "contentHash": f"sha256:{_sha(markdown)}",
+        },
+    }
+
+
+def context_record_is_current(existing: str | None, candidate: dict[str, Any]) -> bool:
+    """Whether the stored record already asserts exactly what this one would.
+
+    Two things have to match, and the second is not in the C1 draft.
+
+    ``source.contentHash`` -- a hash of the MARKDOWN ALONE, not of the
+    serialized record the way the ``client/*`` records above are compared. That
+    difference is load-bearing: this envelope carries ``projectedAt``, so a
+    whole-body comparison could never match, every run would count as an
+    update, and ``projectedAt`` would churn on every pass -- destroying the one
+    field the freshness report reads.
+
+    ``source.docVersion`` as well, because ``ClientContextDoc.version`` is
+    bumped on EVERY portal write and a write does not have to change the text.
+    Identical markdown at version 8 over a projection recorded at version 7 is
+    not a no-op: skipping it leaves the stored provenance claiming 7 forever,
+    and the freshness report -- which compares exactly those two numbers --
+    reports that document stale for the rest of its life. A permanent false
+    stale is worse than a redundant one-kilobyte write, because the report's
+    whole value is that a "stale" line means something.
+    """
+
+    if not existing:
+        return False
+    try:
+        stored = json.loads(existing)
+    except ValueError:
+        # Unreadable JSON on the target is not "current"; overwrite it.
+        return False
+    if not isinstance(stored, dict):
+        return False
+    source = stored.get("source")
+    if not isinstance(source, dict):
+        return False
+    stored_hash = source.get("contentHash")
+    if not stored_hash or stored_hash != candidate["source"]["contentHash"]:
+        return False
+    return source.get("docVersion") == candidate["source"]["docVersion"]
+
+
+#: Fields carried from a `clientCompetitors` row into the workspace list.
+#:
+#: `client.listCompetitors` types a competitor as `{name, website?, ...}` with
+#: everything else passed through to the model verbatim, so this is a curated
+#: set rather than the whole row: `id`, `clientId` and `source` are portal
+#: bookkeeping that would reach a prompt as noise.
+_COMPETITOR_FIELDS: tuple[str, ...] = (
+    "marketTier",
+    "overlap",
+    "positioning",
+    "scale",
+    "keyStrengths",
+    "keyWeaknesses",
+    "threatLevel",
+    "founded",
+    # How often the AI answer engines named this brand in the last visibility
+    # capture. Absent means never measured, which is why it is not defaulted.
+    "llmMentions",
+)
+
+
+def build_competitors(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The `client/competitors.json` array agent-engine already reads.
+
+    Nothing in either repository writes that path today, so
+    ``client.listCompetitors`` returns ``not_available`` for every client in
+    every environment.
+
+    ``company`` -> ``name`` and ``url`` -> ``website`` is the whole mapping: the
+    portal names the column after a company and the tool's interface after a
+    competitor. A row with no company is dropped rather than given a blank name
+    -- the name IS the identity here, and a nameless competitor in a prompt is
+    an invitation to write about nobody.
+    """
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        company = row.get("company")
+        if not isinstance(company, str) or not company.strip():
+            continue
+        record = {"name": company.strip(), "website": row.get("url")}
+        record.update({key: row.get(key) for key in _COMPETITOR_FIELDS})
+        out.append(_clean(record))
+    return out
 
 
 #: Every field an agent-engine workflow refuses to start without, gathered from
@@ -419,6 +613,124 @@ def skeleton_extras(doc: dict[str, Any], slug: str) -> dict[str, tuple[str, Any]
     }
 
 
+def _project_context_docs(
+    *,
+    db: Any,
+    bucket: Any,
+    client_id: str,
+    slug: str,
+    projected_at: str,
+    projected_by: str,
+    report: Report,
+    dry_run: bool,
+) -> None:
+    """Project one client's context documents into ``context/<docType>.json``.
+
+    The query names the tier. It is not a filter applied afterwards, because a
+    post-filter is one refactor away from becoming a fallback.
+    """
+
+    query = (
+        db.collection("clientContextDocs")
+        .where("clientId", "==", client_id)
+        .where("tier", "==", PROJECTED_TIER)
+    )
+    by_type = {}
+    for snapshot in query.stream():
+        row = snapshot.to_dict() or {}
+        doc_type = row.get("docType")
+        if doc_type in PROJECTED_DOC_TYPES:
+            by_type[doc_type] = (snapshot.id, row)
+
+    for doc_type in PROJECTED_DOC_TYPES:
+        found = by_type.get(doc_type)
+        if found is None:
+            # Not reported as a gap: most clients legitimately have only some
+            # of the nine, and nine "absent" lines per client would bury the
+            # ones that matter. The readiness report is where absence is
+            # measured, per client per document.
+            continue
+        firestore_doc_id, row = found
+        record = build_context_record(
+            row,
+            doc_type=doc_type,
+            firestore_doc_id=firestore_doc_id,
+            projected_at=projected_at,
+            projected_by=projected_by,
+        )
+        if record is None:
+            report.record("skipped", f"context/{doc_type} (empty content)")
+            continue
+
+        path = f"clients/{slug}/context/{doc_type}.json"
+        if dry_run:
+            report.record("created", f"context/{doc_type} -> {path}")
+            continue
+
+        blob = bucket.blob(path)
+        existing = blob.download_as_text() if blob.exists() else None
+        if context_record_is_current(existing, record):
+            # A no-op by contentHash, which means projectedAt is left ALONE.
+            # Rewriting an identical document with a fresh timestamp would make
+            # every run look like a change to anything reading that field.
+            report.record("unchanged", f"context/{doc_type}")
+            continue
+
+        blob.upload_from_string(
+            json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True),
+            content_type="application/json",
+        )
+        report.record(
+            "updated" if existing else "created",
+            f"context/{doc_type} (v{record['source']['docVersion']}, "
+            f"{len(record['markdown'])} chars)",
+        )
+
+
+def _project_competitors(
+    *,
+    db: Any,
+    bucket: Any,
+    client_id: str,
+    slug: str,
+    report: Report,
+    dry_run: bool,
+) -> None:
+    """Project ``clientCompetitors`` into the path ``client.listCompetitors`` reads."""
+
+    rows = [
+        snapshot.to_dict() or {}
+        for snapshot in db.collection("clientCompetitors")
+        .where("clientId", "==", client_id)
+        .stream()
+    ]
+    competitors = build_competitors(rows)
+    if not competitors:
+        # An empty list is NOT written. `client.listCompetitors` treats a
+        # present-but-empty array as a normal success with no competitors, and
+        # a missing file as "never onboarded" -- so writing [] would convert an
+        # honest "we have not set this up" into "we looked, there are none".
+        report.record("skipped", "client/competitors (no rows in the portal)")
+        return
+
+    path = f"clients/{slug}/client/competitors.json"
+    body = json.dumps(competitors, ensure_ascii=False, indent=2, sort_keys=True)
+    if dry_run:
+        report.record("created", f"client/competitors ({len(competitors)}) -> {path}")
+        return
+
+    blob = bucket.blob(path)
+    if blob.exists():
+        if _sha(blob.download_as_text()) == _sha(body):
+            report.record("unchanged", "client/competitors")
+            return
+        outcome = "updated"
+    else:
+        outcome = "created"
+    blob.upload_from_string(body, content_type="application/json")
+    report.record(outcome, f"client/competitors ({len(competitors)})")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -438,6 +750,16 @@ def main() -> int:
         help=(
             "Write a placeholder client/config.json for clients that have none, so every "
             "agent can run. PREP ONLY -- refused against prod."
+        ),
+    )
+    parser.add_argument(
+        "--projected-by",
+        default="seed-cli",
+        choices=("seed-cli", "backfill", "portal-save"),
+        help=(
+            "Recorded in each context record's provenance. The reader never "
+            "branches on it; it is there so the audit trail can answer which "
+            "mechanism wrote a projection."
         ),
     )
     parser.add_argument("--only", help="Restrict to one client slug")
@@ -474,6 +796,10 @@ def main() -> int:
     print(f"  mode     : {'DRY RUN' if args.dry_run else 'WRITING'}\n")
 
     report = Report()
+    # One timestamp for the whole pass: two documents projected in the same run
+    # were projected at the same moment, and a per-write `utcnow()` would make
+    # them differ by milliseconds for no reason anyone could use.
+    projected_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     for snapshot in db.collection("clients").stream():
         doc = snapshot.to_dict() or {}
         slug = doc.get("agentsRepoSlug")
@@ -487,6 +813,26 @@ def main() -> int:
             continue
 
         print(f"{slug}  ({doc.get('name')})")
+
+        _project_context_docs(
+            db=db,
+            bucket=bucket,
+            client_id=snapshot.id,
+            slug=slug,
+            projected_at=projected_at,
+            projected_by=args.projected_by,
+            report=report,
+            dry_run=args.dry_run,
+        )
+        _project_competitors(
+            db=db,
+            bucket=bucket,
+            client_id=snapshot.id,
+            slug=slug,
+            report=report,
+            dry_run=args.dry_run,
+        )
+
         records: dict[str, dict[str, Any]] = {
             "profile": build_profile(doc),
             "brand": build_brand(doc),
