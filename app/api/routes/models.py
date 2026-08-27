@@ -25,7 +25,9 @@ from app.api.schemas.model import (
     ModelUpdate,
 )
 from app.core.enums import ModelAvailability
+from app.core.roles import Role
 from app.dependencies import get_model_service
+from app.security import require_role
 from app.services.models import ModelService
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -36,6 +38,7 @@ router = APIRouter(prefix="/models", tags=["models"])
     response_model=ModelRead,
     status_code=status.HTTP_201_CREATED,
     summary="Register a model",
+    dependencies=[Depends(require_role(Role.ADMIN))],
 )
 async def create_model(
     payload: ModelCreate,
@@ -77,7 +80,12 @@ async def get_model(
     return ModelRead.model_validate(await models.get(model_id))
 
 
-@router.patch("/{model_id}", response_model=ModelRead, summary="Update a model")
+@router.patch(
+    "/{model_id}",
+    response_model=ModelRead,
+    summary="Update a model",
+    dependencies=[Depends(require_role(Role.ADMIN))],
+)
 async def update_model(
     model_id: str,
     payload: ModelUpdate,
@@ -95,6 +103,7 @@ async def update_model(
         "Records the request; it does not enable anything. Enabling a model means the "
         "engine has to route it and someone has to accept its cost, so a human does that."
     ),
+    dependencies=[Depends(require_role(Role.EDITOR))],
 )
 async def request_model_access(
     model_id: str,

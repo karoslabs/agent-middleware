@@ -36,9 +36,10 @@ from app.core.exceptions import (
     ResourceConflictError,
     ResourceNotFoundError,
 )
+from app.core.roles import Role
 from app.db.firestore import FirestoreDB
 from app.logging_config import configure_logging
-from app.security import require_service_identity
+from app.security import require_role, require_service_identity
 from app.services.agents import AgentService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
@@ -111,6 +112,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             settings.environment,
         )
 
+    if settings.role_bindings_missing:
+        # Loud, because the symptom is a 403 on a write that used to succeed and
+        # the cause is one unset variable. Naming it here means the answer is in
+        # the startup log of the revision that started refusing.
+        logger.error(
+            "AUTH_ROLE_BINDINGS is empty while authentication is enabled: every "
+            "verified caller falls back to AUTH_DEFAULT_ROLE=%s. Bind the calling "
+            "service accounts before turning authentication on, or writes will be "
+            "refused.",
+            settings.auth_default_role.value,
+        )
+
     logger.info(
         "%s started (environment=%s, firestore=%s/%s, job_topic=%s, auth=%s)",
         settings.app_name,
@@ -119,6 +132,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.firestore_database,
         settings.job_topic_id,
         "enabled" if settings.auth_enabled else "disabled",
+    )
+    logger.info(
+        "authorization: %d role binding(s), default role %s",
+        len(settings.auth_role_bindings),
+        settings.auth_default_role.value,
     )
     try:
         yield
@@ -146,7 +164,10 @@ def create_app() -> FastAPI:
     # It exposes only reachability booleans, never data.
     app.include_router(health.router)
 
-    protected = [Depends(require_service_identity)]
+    # Every protected route requires at least `viewer`; writes name a higher
+    # minimum on the route itself. Authentication and the read floor belong
+    # together here so a new router cannot be added without either.
+    protected = [Depends(require_service_identity), Depends(require_role(Role.VIEWER))]
     app.include_router(agents.router, dependencies=protected)
     app.include_router(prompts.router, dependencies=protected)
     app.include_router(engine_prompts.router, dependencies=protected)
