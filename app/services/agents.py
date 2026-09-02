@@ -30,20 +30,23 @@ class AgentService:
 
     async def create(self, payload: AgentCreate) -> dict[str, Any]:
         now = utcnow()
-        document = {
-            "slug": payload.slug,
-            "name": payload.name,
-            "description": payload.description,
-            "status": payload.status.value,
-            "agent_type": payload.agent_type,
-            "model": payload.model,
-            "model_params": payload.model_params,
-            "config": payload.config,
-            "tags": payload.tags,
-            "deleted_at": None,
-            "created_at": now,
-            "updated_at": now,
-        }
+        # Dumped wholesale rather than assembled field by field. The hand-listed
+        # version predated the catalog fields and never grew to match the schema,
+        # so `stages`, `icon`, `category`, `credit_cost`, `is_public`,
+        # `required_inputs` and `stages_read_only` were accepted by the request
+        # body and dropped on the floor -- a POST carrying stages returned 201
+        # with the stages gone, and only a follow-up PATCH persisted them. Taking
+        # the whole payload means a field added to AgentCreate is stored by
+        # construction instead of by remembering to edit two places.
+        document = payload.model_dump()
+        document["status"] = payload.status.value
+        document.update({"deleted_at": None, "created_at": now, "updated_at": now})
+
+        # The same gate `update` puts in front of an edited stage list: a stage
+        # naming a model nothing routes is refused here, not left to surface as a
+        # tooling_error at the model call. Run before the write, so a rejected
+        # create leaves no row and the slug stays free.
+        await self._reject_unknown_stage_models(document["stages"])
 
         try:
             await self._db.document(AGENTS, payload.slug).create(document)

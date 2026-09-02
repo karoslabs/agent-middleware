@@ -19,7 +19,7 @@ read-only because editing this list would change a page and not a program.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -86,24 +86,3 @@ class AgentInputDef(BaseModel):
     required: bool = False
     placeholder: str | None = None
     options: list[str] = Field(default_factory=list)
-
-
-class AgentPresentation(BaseModel):
-    """The catalog/Studio half of an agent record."""
-
-    #: lucide icon name, matching karosCMO's own icon component.
-    icon: str | None = Field(default=None, max_length=64)
-    category: str | None = Field(default=None, max_length=64)
-    #: Credits charged per run. Null means "use the platform default" rather
-    #: than "free" — a zero here would be a priced decision, and absent is not.
-    credit_cost: int | None = Field(default=None, ge=0)
-    #: Whether the agent appears in client-facing surfaces at all.
-    is_public: bool = True
-    required_inputs: list[AgentInputDef] = Field(default_factory=list)
-    #: Read-only for hand-written workflows: their stages are code.
-    stages: list[AgentStage] = Field(default_factory=list)
-    #: True when `stages` describes compiled code rather than editable data.
-    stages_read_only: bool = True
-
-    def as_document(self) -> dict[str, Any]:
-        return self.model_dump(mode="json")
