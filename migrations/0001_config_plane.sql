@@ -526,6 +526,10 @@ create table config.agent_versions (
     default_model_id         text        references config.models (model_id),
     default_provider_policy  text        not null default 'pinned',
     dedupe_against_history   boolean     not null default false,
+    -- Overrides DEFAULT_AGENT_STEP_TIMEOUT_MS (10 minutes) for every
+    -- step.agent call in a run of this version. Per-run and not per-step,
+    -- because that is the only shape WorkflowRuntime accepts.
+    agent_step_timeout_ms    integer,
     notes                    text,
     frozen_at                timestamptz,
     frozen_by                text,
@@ -539,6 +543,8 @@ create table config.agent_versions (
         check (version >= 1),
     constraint agent_versions_provider_policy_vocabulary
         check (default_provider_policy in ('pinned', 'portable', 'commodity')),
+    constraint agent_versions_step_timeout_positive
+        check (agent_step_timeout_ms is null or agent_step_timeout_ms > 0),
     -- A frozen version records when and by whom; a draft records neither.
     constraint agent_versions_frozen_is_stamped
         check ((status = 'frozen' and frozen_at is not null)
@@ -608,20 +614,43 @@ create table config.agent_version_steps (
     provider_policy      text,
     fallback_model_id    text        references config.models (model_id),
     output_schema        jsonb,
+    -- The engine's own bounds, named as the engine names them. SCRUM-217 asks
+    -- for "retry, timeout"; agent-engine has neither at step level for an AI
+    -- step, and inventing columns for them would mean storing configuration
+    -- no consumer can read -- which is how a wrong implementation grows to
+    -- match a schema. What it actually has:
+    --   maxSteps            -- ReAct turn ceiling, default 8
+    --   maxTokens           -- output-token ceiling for one turn; a turn that
+    --                          runs out of room returns truncated, unparseable
+    --                          structured output and the step fails outright,
+    --                          so this is not a soft limit
+    --   maxMalformedTurns   -- how many malformed turns are re-prompted with
+    --                          the validation error before giving up; default 1
     max_steps            integer,
+    max_tokens           integer,
+    max_malformed_turns  integer,
+
+    -- The self-critique gate, when a step has one. `gate_tool` is a tool name
+    -- (e.g. "gate.brand_compliance"); S4 resolves it against `tools` at
+    -- publish rather than a foreign key here, because a gate tool is not a
+    -- tool the step may CALL -- it is one the step is measured by.
+    self_critique_gate_tool      text,
+    self_critique_max_revisions  integer,
+    self_critique_args           jsonb,
 
     -- code steps
     language             text,
     code                 text,
+    -- The sandbox's wall-clock budget for the script, and the ONLY per-step
+    -- timeout the engine has. An AI step's timeout is per-RUN
+    -- (WorkflowRuntime.agentStepTimeoutMs, default 10 minutes, applied to
+    -- every step.agent call in the run), so it lives on agent_versions.
+    code_timeout_ms      integer,
 
     -- gate steps
     is_gate              boolean     not null default false,
     gate_kind            config.code,
 
-    -- Everything C6''s snapshot needs that is not a reference
-    timeout_ms           integer,
-    retry_max_attempts   integer     not null default 0,
-    retry_backoff_ms     integer,
     skill_ref            text,
     config               jsonb       not null default '{}'::jsonb,
 
@@ -654,13 +683,21 @@ create table config.agent_version_steps (
     constraint agent_version_steps_gate_flag_agrees
         check ((is_gate and gate_kind is not null)
                or (not is_gate and gate_kind is null)),
-    constraint agent_version_steps_timeout_positive
-        check (timeout_ms is null or timeout_ms > 0),
-    constraint agent_version_steps_retry_sane
-        check (retry_max_attempts >= 0 and retry_max_attempts <= 10
-               and (retry_backoff_ms is null or retry_backoff_ms >= 0)),
-    constraint agent_version_steps_max_steps_positive
-        check (max_steps is null or max_steps > 0)
+    -- A timeout on a step the sandbox does not run is a number nothing reads.
+    constraint agent_version_steps_code_timeout_is_for_code
+        check (code_timeout_ms is null
+               or (code_timeout_ms > 0 and code is not null)),
+    constraint agent_version_steps_bounds_positive
+        check ((max_steps is null or max_steps > 0)
+               and (max_tokens is null or max_tokens > 0)
+               and (max_malformed_turns is null or max_malformed_turns between 0 and 5)),
+    -- A max_revisions or an args map with no gate tool configures nothing.
+    constraint agent_version_steps_self_critique_is_whole
+        check ((self_critique_gate_tool is not null
+                and coalesce(self_critique_max_revisions, 1) > 0)
+               or (self_critique_gate_tool is null
+                   and self_critique_max_revisions is null
+                   and self_critique_args is null))
 );
 
 create index agent_version_steps_version_position_idx

@@ -654,6 +654,78 @@ begin
     raise notice 'ok 13: the S4 tool check is one join, and the absence of a grant is a no';
 end $$;
 
+-- --------------------------------------------------------------------
+-- 14. The engine's own bounds, and nothing it cannot read
+-- --------------------------------------------------------------------
+--
+-- SCRUM-217 asks for "retry, timeout" on a step. agent-engine has neither at
+-- step level for an AI step: its knobs are maxSteps, maxTokens and
+-- maxMalformedTurns, its self-critique loop has maxRevisions, and the only
+-- timeout is per-RUN (agentStepTimeoutMs). These checks pin the columns to
+-- that vocabulary, so the schema cannot hold configuration no consumer reads.
+
+do $$
+declare
+    draft uuid;
+begin
+    insert into config.agent_versions (agent_slug, version, agent_step_timeout_ms)
+    values ('x-agent', 50, 600000) returning id into draft;
+    raise notice 'ok 14a: the agent-step timeout is per-run, on the version';
+
+    begin
+        insert into config.agent_version_steps (
+            version_id, step_id, position, kind_code, prompt_version_id,
+            output_schema, code_timeout_ms
+        ) values (draft, '10-ai-with-sandbox-timeout', 0, 'ai',
+                  '22222222-2222-2222-2222-222222222222',
+                  '[{"name": "post", "type": "string"}]'::jsonb, 30000);
+        raise exception 'FAIL 14b: a sandbox timeout was accepted on a step with no code';
+    exception when check_violation then
+        raise notice 'ok 14b: the sandbox timeout only exists where there is a script';
+    end;
+
+    begin
+        insert into config.agent_version_steps (
+            version_id, step_id, position, kind_code, prompt_version_id,
+            output_schema, self_critique_max_revisions
+        ) values (draft, '11-half-critique', 1, 'ai',
+                  '22222222-2222-2222-2222-222222222222',
+                  '[{"name": "post", "type": "string"}]'::jsonb, 2);
+        raise exception 'FAIL 14c: a revision count with no gate tool was accepted';
+    exception when check_violation then
+        raise notice 'ok 14c: a self-critique loop is a gate tool or nothing';
+    end;
+
+    begin
+        insert into config.agent_version_steps (
+            version_id, step_id, position, kind_code, prompt_version_id,
+            output_schema, max_malformed_turns
+        ) values (draft, '12-forever-retry', 2, 'ai',
+                  '22222222-2222-2222-2222-222222222222',
+                  '[{"name": "post", "type": "string"}]'::jsonb, 50);
+        raise exception 'FAIL 14d: an unbounded malformed-turn budget was accepted';
+    exception when check_violation then
+        raise notice 'ok 14d: malformed turns are bounded (a model looping on one '
+                     'shape mistake is a config problem, not a token budget)';
+    end;
+
+    insert into config.agent_version_steps (
+        version_id, step_id, position, kind_code, prompt_version_id, output_schema,
+        max_steps, max_tokens, max_malformed_turns,
+        self_critique_gate_tool, self_critique_max_revisions, self_critique_args
+    ) values (draft, '13-fully-configured', 3, 'ai',
+              '22222222-2222-2222-2222-222222222222',
+              '[{"name": "post", "type": "string"}]'::jsonb,
+              8, 8192, 1, 'gate.lintPost', 1, '{"platform": "x"}'::jsonb);
+
+    insert into config.agent_version_steps (
+        version_id, step_id, position, kind_code, language, code, code_timeout_ms
+    ) values (draft, '14-transform', 4, 'code', 'python',
+              'print(json.dumps({"ok": True}))', 30000);
+
+    raise notice 'ok 14e: every field the engine actually reads has a home';
+end $$;
+
 do $$ begin raise notice 'ALL CHECKS PASSED'; end $$;
 
 rollback;
