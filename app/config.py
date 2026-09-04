@@ -92,6 +92,19 @@ class Settings(BaseSettings):
             "caller nobody bound can read and not write."
         ),
     )
+    model_pricing_enforced: bool = Field(
+        default=False,
+        description=(
+            "Refuse to dispatch a run whose agent names a model the catalog cannot "
+            "price. Defaults to FALSE because turning it on before "
+            "scripts/seed_model_catalog.py has run against the environment turns "
+            "every dispatch into a 422, and the way that gets noticed is a client "
+            "asking why nothing ran. Check GET /models/pricing-coverage, seed, then "
+            "set this to true. While it is false an unpriceable model is logged at "
+            "WARNING with the agent and stage that name it, so the gap is visible "
+            "rather than silent."
+        ),
+    )
 
     # --- GCS (binary template assets) ---
     gcs_artifacts_bucket: str | None = Field(
