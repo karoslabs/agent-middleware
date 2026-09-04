@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import Depends, Request
 
 from app.config import Settings
+from app.core.exceptions import ServiceUnavailableError
 from app.db.firestore import FirestoreDB
 from app.services.agents import AgentService
 from app.services.context import ContextService
@@ -19,6 +20,7 @@ from app.services.dispatch import DispatchService
 from app.services.engine_prompts import EnginePromptService
 from app.services.feedback import FeedbackService
 from app.services.models import ModelService
+from app.services.prompt_store import UnifiedPromptStore
 from app.services.prompts import PromptService
 from app.services.runs import RunService
 from app.services.templates import TemplateService
@@ -42,6 +44,26 @@ def get_prompt_service(request: Request) -> PromptService:
 
 def get_engine_prompt_service(request: Request) -> EnginePromptService:
     return request.app.state.engine_prompt_service
+
+
+def get_prompt_store(request: Request) -> UnifiedPromptStore:
+    """The append-only prompt store, or a 503 that says what is missing.
+
+    Absent when there is no configuration database, which is a deployment
+    state rather than a fault (S1). The legacy in-place write still works in
+    that case -- see ``EnginePromptService.write`` -- so a Studio edit never
+    stops working because Cloud SQL has not been stood up yet.
+    """
+
+    store: UnifiedPromptStore | None = getattr(request.app.state, "prompt_store", None)
+    if store is None:
+        raise ServiceUnavailableError(
+            "the prompt store needs the configuration database (CONFIG_DB_DSN is "
+            "unset in this environment), so version history and restore are not "
+            "available here. Editing a prompt still works, on the legacy in-place "
+            "path, which keeps at most 10 superseded revisions."
+        )
+    return store
 
 
 def get_template_service(request: Request) -> TemplateService:

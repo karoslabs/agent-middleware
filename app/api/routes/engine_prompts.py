@@ -23,11 +23,14 @@ from app.api.schemas.engine_prompt import (
     EnginePromptRead,
     EnginePromptUpdate,
     EnginePromptVersionSummary,
+    PromptRestoreRequest,
+    PromptVersionRead,
 )
 from app.core.roles import Role
-from app.dependencies import get_engine_prompt_service
+from app.dependencies import get_engine_prompt_service, get_prompt_store
 from app.security import CallerIdentity, require_role
 from app.services.engine_prompts import EnginePromptService
+from app.services.prompt_store import UnifiedPromptStore
 
 router = APIRouter(prefix="/engine-prompts", tags=["engine prompts"])
 
@@ -102,3 +105,82 @@ async def read_history(
     return [
         EnginePromptVersionSummary.model_validate(row) for row in await prompts.history(prompt_id)
     ]
+
+# --- The append-only store (S7 / SCRUM-221) ---------------------------------
+#
+# `/history` above reads the capped `supersededHistory` array. These read the
+# store that replaced it: every version, individually fetchable, with a restore
+# path. Both are served during the migration window because the array still
+# holds entries for prompts nobody has edited since, and deleting the evidence
+# that this migration happened is not an improvement.
+
+
+@router.get(
+    "/{prompt_id}/versions/{version}/store",
+    response_model=list[PromptVersionRead],
+    summary="Every version of this prompt, newest first",
+    description=(
+        "Uncapped. The array this replaces kept ten entries, so an agent whose prompt "
+        "is tuned weekly lost its first quarter of history in a quarter — and the entry "
+        "nobody could read back was always the one somebody wanted."
+    ),
+)
+async def list_stored_versions(
+    prompt_id: str,
+    version: str,
+    store: UnifiedPromptStore = Depends(get_prompt_store),
+) -> list[PromptVersionRead]:
+    return [
+        PromptVersionRead.model_validate(row)
+        for row in await store.versions(prompt_id, version)
+    ]
+
+
+@router.get(
+    "/{prompt_id}/versions/{version}/store/{stored_version}",
+    response_model=PromptVersionRead,
+    summary="One exact version of this prompt",
+    description=(
+        "What the capped array could never give back: a single revision, by number, "
+        "with its author, its hash and whether it is the one currently running."
+    ),
+)
+async def read_stored_version(
+    prompt_id: str,
+    version: str,
+    stored_version: int,
+    store: UnifiedPromptStore = Depends(get_prompt_store),
+) -> PromptVersionRead:
+    return PromptVersionRead.model_validate(
+        await store.version(prompt_id, version, stored_version)
+    )
+
+
+@router.post(
+    "/{prompt_id}/versions/{version}/store/{stored_version}/restore",
+    response_model=PromptVersionRead,
+    summary="Reinstate an earlier version of this prompt",
+    description=(
+        "The restore path the old endpoint never had. Additive: the earlier text is "
+        "written as a NEW version that records which one it reinstated, and the "
+        "engine's document is updated to match. A restore that mutated history would "
+        "be the same destructive edit wearing a different name."
+    ),
+)
+async def restore_stored_version(
+    prompt_id: str,
+    version: str,
+    stored_version: int,
+    payload: PromptRestoreRequest,
+    identity: CallerIdentity = Depends(require_role(Role.EDITOR)),
+    store: UnifiedPromptStore = Depends(get_prompt_store),
+) -> PromptVersionRead:
+    return PromptVersionRead.model_validate(
+        await store.restore(
+            prompt_id,
+            version,
+            stored_version,
+            actor=identity.actor,
+            reason=payload.reason,
+        )
+    )
