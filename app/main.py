@@ -27,7 +27,17 @@ from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.api.routes import agents, context, engine_prompts, health, models, prompts, runs, templates
+from app.api.routes import (
+    agents,
+    configuration,
+    context,
+    engine_prompts,
+    health,
+    models,
+    prompts,
+    runs,
+    templates,
+)
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     IncompleteAgentConfigurationError,
@@ -35,12 +45,16 @@ from app.core.exceptions import (
     MessagePublishError,
     ResourceConflictError,
     ResourceNotFoundError,
+    ServiceUnavailableError,
+    ValidationRefusedError,
 )
 from app.core.roles import Role
 from app.db.firestore import FirestoreDB
+from app.db.postgres import ConfigDatabase, build_config_database
 from app.logging_config import configure_logging
 from app.security import require_role, require_service_identity
 from app.services.agents import AgentService
+from app.services.configuration import ConfigurationService
 from app.services.context import ContextService
 from app.services.dispatch import DispatchService
 from app.services.engine_prompts import EnginePromptService
@@ -59,12 +73,19 @@ def build_services(
     settings: Settings,
     database: FirestoreDB,
     publisher: PublisherService | None = None,
+    config_database: ConfigDatabase | None = None,
 ) -> None:
     """Construct every service once and attach it to ``app.state``.
 
     Request handlers reach these through ``app.dependencies``, so no handler ever
     builds a Firestore or Pub/Sub client of its own. ``publisher`` is injectable
     so tests can wire a fake Pub/Sub client without patching module globals.
+
+    ``config_database`` is optional and stays optional: the Configuration API
+    (S4) needs Cloud SQL, which does not exist in every environment yet, and a
+    control plane that refused to start without it would make the Postgres
+    migration a flag day for routes that have nothing to do with it. Its routes
+    report 503 with the reason; everything else is unaffected.
     """
 
     publisher = publisher or PublisherService(settings)
@@ -90,6 +111,10 @@ def build_services(
     app.state.dispatch_service = DispatchService(
         settings, context_service, run_service, publisher, model_service
     )
+    app.state.config_database = config_database
+    app.state.configuration_service = (
+        ConfigurationService(config_database) if config_database is not None else None
+    )
 
 
 @asynccontextmanager
@@ -98,7 +123,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
 
     database = FirestoreDB(settings)
-    build_services(app, settings, database)
+    config_database = await build_config_database(settings)
+    build_services(app, settings, database, config_database=config_database)
 
     if not settings.auth_enabled:
         logger.warning(
@@ -140,12 +166,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         len(settings.auth_role_bindings),
         settings.auth_default_role.value,
     )
+    if config_database is not None:
+        logger.info(
+            "configuration database connected (pool %d-%d)",
+            settings.config_db_pool_min_size,
+            settings.config_db_pool_max_size,
+        )
+
     try:
         yield
     finally:
         logger.info("Shutting down %s", settings.app_name)
         app.state.publisher.close()
         database.close()
+        if config_database is not None:
+            await config_database.close()
 
 
 def create_app() -> FastAPI:
@@ -178,6 +213,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router, dependencies=protected)
     app.include_router(context.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
+    app.include_router(configuration.router, dependencies=protected)
 
     register_exception_handlers(app)
     return app
@@ -206,6 +242,28 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)}
+        )
+
+    @app.exception_handler(ValidationRefusedError)
+    async def handle_validation_refused(
+        _: Request, exc: ValidationRefusedError
+    ) -> JSONResponse:
+        """A publish that would produce a broken version.
+
+        422 with every problem, not the first: the caller is meant to fix all
+        of them in one pass. `detail` stays a string so a client that only
+        renders that keeps working.
+        """
+
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"detail": str(exc), "problems": exc.problems},
+        )
+
+    @app.exception_handler(ServiceUnavailableError)
+    async def handle_unavailable(_: Request, exc: ServiceUnavailableError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": str(exc)}
         )
 
     @app.exception_handler(ValidationError)
