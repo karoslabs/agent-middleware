@@ -522,6 +522,10 @@ def test_destructive_routes_require_admin() -> None:
         # price, so a row here reroutes or reprices work across all agents.
         "POST /models",
         "PATCH /models/{model_id}",
+        # Repointing an alias changes what every stage naming it runs on, at
+        # once, with no code change -- which is the point of an alias and the
+        # reason it is admin.
+        "PUT /models/aliases/{alias}",
     }
 
     app = create_app()

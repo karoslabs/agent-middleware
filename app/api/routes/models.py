@@ -20,9 +20,12 @@ from app.api.schemas.common import Page, Pagination, pagination, parse_rows
 from app.api.schemas.model import (
     ModelAccessRequest,
     ModelAccessRequestRead,
+    ModelAliasRead,
+    ModelAliasUpsert,
     ModelCreate,
     ModelRead,
     ModelUpdate,
+    PricingCoverage,
 )
 from app.core.enums import ModelAvailability
 from app.core.roles import Role
@@ -70,6 +73,74 @@ async def list_models(
         total=total - skipped,
         has_more=page.offset + len(rows) < total,
     )
+
+
+# --- Aliases and coverage ---------------------------------------------------
+#
+# Declared BEFORE `/{model_id}`: FastAPI matches in declaration order, so a
+# literal path added after a path parameter is unreachable -- `GET
+# /models/aliases` would resolve as "the model whose id is `aliases`" and 404.
+
+
+@router.get(
+    "/aliases",
+    response_model=list[ModelAliasRead],
+    summary="List model aliases",
+)
+async def list_model_aliases(
+    models: ModelService = Depends(get_model_service),
+) -> list[ModelAliasRead]:
+    return [ModelAliasRead.model_validate(row) for row in await models.list_aliases()]
+
+
+@router.get(
+    "/aliases/{alias}",
+    response_model=ModelAliasRead,
+    summary="Resolve one alias",
+)
+async def get_model_alias(
+    alias: str,
+    models: ModelService = Depends(get_model_service),
+) -> ModelAliasRead:
+    return ModelAliasRead.model_validate(await models.get_alias(alias))
+
+
+@router.put(
+    "/aliases/{alias}",
+    response_model=ModelAliasRead,
+    summary="Point an alias at a model",
+    dependencies=[Depends(require_role(Role.ADMIN))],
+)
+async def upsert_model_alias(
+    alias: str,
+    payload: ModelAliasUpsert,
+    models: ModelService = Depends(get_model_service),
+) -> ModelAliasRead:
+    """Idempotent, because repointing an alias IS the operation.
+
+    A new Sonnet generation should be this call and nothing else -- no code
+    change, no redeploy, which is the whole reason an alias exists.
+    """
+
+    return ModelAliasRead.model_validate(await models.upsert_alias(alias, payload))
+
+
+@router.get(
+    "/pricing-coverage",
+    response_model=PricingCoverage,
+    summary="Which models the agents name, and which of those cannot be priced",
+)
+async def get_pricing_coverage(
+    models: ModelService = Depends(get_model_service),
+) -> PricingCoverage:
+    """The pre-flight before enforcement is turned on.
+
+    ``MODEL_PRICING_ENFORCED=true`` in an environment whose catalog is not
+    seeded turns every dispatch into a 422, and the way that gets noticed is a
+    client asking why nothing ran. This answers the question first.
+    """
+
+    return await models.coverage()
 
 
 @router.get("/{model_id}", response_model=ModelRead, summary="Get one model")

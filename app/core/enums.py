@@ -59,13 +59,77 @@ class FeedbackStatus(StrEnum):
     NEEDS_CHANGES = "needs_changes"
 
 class ModelVendor(StrEnum):
-    """Who serves a model. Distinct from where it runs: Claude on Vertex is
-    still Anthropic's model, and the engine's router cares about both."""
+    """Who MAKES a model. Distinct from how this deployment reaches it.
+
+    agent-engine has its own ``ModelVendorSchema`` -- ``anthropic`` /
+    ``gemini`` / ``model-garden`` / ``openai-compatible`` -- which answers a
+    different question and happens to share the word. That one is
+    :class:`ModelRoute` here. Llama served through Model Garden is
+    ``vendor=meta, route=model-garden``; collapsing the two axes into one
+    column is how a model that exists becomes inexpressible.
+    """
 
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
     META = "meta"
+    MISTRAL = "mistral"
+    OPENAI = "openai"
     OTHER = "other"
+
+
+class ModelRoute(StrEnum):
+    """How this deployment reaches a model -- agent-engine's own vendor axis.
+
+    Mirrors ``ModelVendorSchema`` in ``packages/core/src/types/model-policy.ts``
+    exactly, because the router branches on it: each value implies a different
+    wire shape, a different structured-output mechanism and a different
+    failure mode.
+    """
+
+    ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
+    MODEL_GARDEN = "model-garden"
+    OPENAI_COMPATIBLE = "openai-compatible"
+
+
+class ProviderPolicy(StrEnum):
+    """Whether a step's model may be substituted on failure.
+
+    Orthogonal to both vendor axes above, and mirrors the engine's
+    ``ProviderPolicySchema``. ``pinned`` never swaps -- a pinned step's model
+    is what it is, or the step fails loudly.
+    """
+
+    PINNED = "pinned"
+    PORTABLE = "portable"
+    COMMODITY = "commodity"
+
+
+#: Prompt-cache reads run at roughly a 90% discount off base input price, which
+#: is what agent-engine's ``CACHE_READ_DISCOUNT`` applies to every model that
+#: supports caching. A catalog row may override it with an explicit
+#: ``cached_input_per_1m`` -- some models price cache reads differently, and a
+#: multiplier that is right for most of them is still wrong for those.
+CACHE_READ_DISCOUNT = 0.1
+
+
+def route_for_vendor(vendor: ModelVendor) -> ModelRoute:
+    """The route a vendor is reached by in this deployment, when unstated.
+
+    A derivation and not a guess: every model in the catalog today is reached
+    the way its vendor is reached here. Stating ``route`` explicitly on the row
+    overrides it, which is what a deployment that fronts Claude through a
+    LiteLLM gateway would do.
+    """
+
+    return {
+        ModelVendor.ANTHROPIC: ModelRoute.ANTHROPIC,
+        ModelVendor.GOOGLE: ModelRoute.GEMINI,
+        ModelVendor.META: ModelRoute.MODEL_GARDEN,
+        ModelVendor.MISTRAL: ModelRoute.MODEL_GARDEN,
+        ModelVendor.OPENAI: ModelRoute.OPENAI_COMPATIBLE,
+        ModelVendor.OTHER: ModelRoute.OPENAI_COMPATIBLE,
+    }[vendor]
 
 
 class ModelAvailability(StrEnum):
