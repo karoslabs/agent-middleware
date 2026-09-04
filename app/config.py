@@ -134,9 +134,22 @@ class Settings(BaseSettings):
     auth_default_role: Role = Field(
         default=Role.VIEWER,
         description=(
-            "Role for an authenticated caller with no entry in auth_role_bindings. "
-            "Defaults to the least authority, so an unbound caller can read and not "
-            "write. Set to 'admin' only as a deliberate, temporary migration step."
+            "Role for an authenticated caller with no entry in auth_role_bindings, "
+            "once at least one binding exists. Defaults to the least authority, so a "
+            "caller nobody bound can read and not write."
+        ),
+    )
+    model_pricing_enforced: bool = Field(
+        default=False,
+        description=(
+            "Refuse to dispatch a run whose agent names a model the catalog cannot "
+            "price. Defaults to FALSE because turning it on before "
+            "scripts/seed_model_catalog.py has run against the environment turns "
+            "every dispatch into a 422, and the way that gets noticed is a client "
+            "asking why nothing ran. Check GET /models/pricing-coverage, seed, then "
+            "set this to true. While it is false an unpriceable model is logged at "
+            "WARNING with the agent and stage that name it, so the gap is visible "
+            "rather than silent."
         ),
     )
 
@@ -194,12 +207,27 @@ class Settings(BaseSettings):
         """The role a verified principal holds.
 
         ``principal`` is the caller's service-account email, or its subject when
-        Google issued a token without one. An unbound caller gets
-        ``auth_default_role`` -- ``viewer`` unless someone widened it -- so the
-        failure mode of forgetting a binding is a refused write with the
-        principal named in the message, not a silent grant.
+        Google issued a token without one.
+
+        **An empty ``auth_role_bindings`` means authorization is not configured,
+        and every verified caller gets ``admin``** -- which is exactly the
+        behaviour this service had before roles existed. That is not a weak
+        default, it is the difference between shipping a role model and taking
+        production down with one: ``AUTH_ENABLED`` is hardcoded ``true`` in
+        ``cloudbuild.yaml`` for BOTH environments, so the alternative -- an
+        unbound caller falling to ``viewer`` -- would 403 every write the portal
+        makes on the very next deploy. Startup logs an error while this is the
+        case, so it is loud rather than quiet.
+
+        Bind ONE principal and the model becomes real in the same instant:
+        anyone unbound then falls to ``auth_default_role`` (``viewer``), so a
+        forgotten binding is a refused write with the principal named in the
+        message. Migration is therefore additive and reversible, and no flag
+        day is needed.
         """
 
+        if not self.auth_role_bindings:
+            return Role.ADMIN
         if principal and principal in self.auth_role_bindings:
             return self.auth_role_bindings[principal]
         return self.auth_default_role
