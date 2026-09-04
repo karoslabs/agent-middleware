@@ -60,6 +60,7 @@ from app.services.dispatch import DispatchService
 from app.services.engine_prompts import EnginePromptService
 from app.services.feedback import FeedbackService
 from app.services.models import ModelService
+from app.services.prompt_store import UnifiedPromptStore
 from app.services.prompts import PromptService
 from app.services.publisher import PublisherService
 from app.services.runs import RunService
@@ -91,7 +92,12 @@ def build_services(
     publisher = publisher or PublisherService(settings)
     agent_service = AgentService(database)
     prompt_service = PromptService(database)
-    engine_prompt_service = EnginePromptService(database)
+    prompt_store = (
+        UnifiedPromptStore(config_database, database)
+        if config_database is not None
+        else None
+    )
+    engine_prompt_service = EnginePromptService(database, store=prompt_store)
     template_service = TemplateService(database)
     model_service = ModelService(database)
     run_service = RunService(database)
@@ -112,6 +118,7 @@ def build_services(
         settings, context_service, run_service, publisher
     )
     app.state.config_database = config_database
+    app.state.prompt_store = prompt_store
     app.state.configuration_service = (
         ConfigurationService(config_database) if config_database is not None else None
     )
