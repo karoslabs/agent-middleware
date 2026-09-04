@@ -176,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router, dependencies=protected)
     app.include_router(context.router, dependencies=protected)
     app.include_router(runs.router, dependencies=protected)
+    app.include_router(runs.client_router, dependencies=protected)
 
     register_exception_handlers(app)
     return app

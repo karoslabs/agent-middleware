@@ -464,7 +464,8 @@ def test_every_protected_router_carries_identity_and_a_read_floor() -> None:
     # Exactly one unauthenticated router: health. Cloud Run's probes carry no
     # identity token, and it exposes only reachability booleans.
     assert len(open_routers) == 1
-    assert len(protected_routers) == 8
+    # 9th: the tenant-scoped run listing added with client_slug (S8).
+    assert len(protected_routers) == 9
 
 
 def test_no_mutating_route_sits_at_the_read_floor() -> None:
