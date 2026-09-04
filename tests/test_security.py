@@ -464,7 +464,8 @@ def test_every_protected_router_carries_identity_and_a_read_floor() -> None:
     # Exactly one unauthenticated router: health. Cloud Run's probes carry no
     # identity token, and it exposes only reachability booleans.
     assert len(open_routers) == 1
-    assert len(protected_routers) == 8
+    # 9th: the Configuration API (S4).
+    assert len(protected_routers) == 9
 
 
 def test_no_mutating_route_sits_at_the_read_floor() -> None:
@@ -522,6 +523,13 @@ def test_destructive_routes_require_admin() -> None:
         # price, so a row here reroutes or reprices work across all agents.
         "POST /models",
         "PATCH /models/{model_id}",
+        # Publishing and rolling back change what every client of an agent gets
+        # on their next run, immediately, with no review step in between. That
+        # is a different act from editing a draft (editor), and the ladder
+        # should say so.
+        "POST /config/agents/{agent_slug}/versions/{version}/publish",
+        "POST /config/agents/{agent_slug}/rollback",
+        "DELETE /config/agents/{agent_slug}/versions/{version}",
     }
 
     app = create_app()

@@ -84,6 +84,53 @@ class Settings(BaseSettings):
             "absent from this map falls back to auth_default_role."
         ),
     )
+    # --- The configuration plane (Postgres) -------------------------------
+    config_db_dsn: str | None = Field(
+        default=None,
+        description=(
+            "asyncpg DSN for the configuration schema. Unset means the Configuration "
+            "API reports itself unavailable and every other route is unaffected -- "
+            "Cloud SQL does not exist in every environment yet, and a control plane "
+            "that refused to start without it would make the Postgres migration a "
+            "flag day for routes that have nothing to do with it. For Cloud SQL over "
+            "a unix socket: postgresql://USER@/DB?host=/cloudsql/PROJECT:REGION:INSTANCE"
+        ),
+    )
+    config_db_pool_min_size: int = Field(
+        default=1,
+        ge=0,
+        description=(
+            "Minimum pooled connections. 1 rather than 0 so the first request after "
+            "a cold start does not pay the connection handshake."
+        ),
+    )
+    config_db_pool_max_size: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Maximum pooled connections PER INSTANCE. Cloud Run multiplies this by "
+            "the instance count against Cloud SQL's own connection limit, which is "
+            "how a scale-out event becomes 'too many connections' rather than a "
+            "capacity increase."
+        ),
+    )
+    config_db_idle_lifetime_seconds: float = Field(
+        default=300.0,
+        gt=0,
+        description=(
+            "Recycle a connection idle for longer than this. Below Cloud SQL's own "
+            "idle timeout on purpose: a connection the server has already dropped is "
+            "a first-request 500 that looks like a code fault."
+        ),
+    )
+    config_db_command_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "Per-statement timeout. A publish validates a whole version and is the "
+            "longest statement here; anything past this is a lock someone else holds."
+        ),
+    )
     auth_default_role: Role = Field(
         default=Role.VIEWER,
         description=(
